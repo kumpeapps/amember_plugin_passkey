@@ -67,7 +67,7 @@
  * Version: 0.1.0
  */
 
-class Am_Plugin_Passkey extends Am_Plugin
+class Am_Protect_Passkey extends Am_Protect_Abstract
 {
     protected $id = 'passkey';
     protected $title = 'Passkey Login';

@@ -9,7 +9,8 @@
 ## Installation Steps
 
 1. **Copy Plugin Files**
-   - Place the `passkey` plugin folder into `application/default/plugins/` in your aMember installation.
+    - Place the `passkey` plugin folder into `application/default/plugins/protect/` in your aMember installation, so the full path is:
+       `application/default/plugins/protect/passkey/`
 
 2. **Install PHP Dependencies**
    - In your aMember root directory, run:
@@ -22,7 +23,7 @@
    - Import the provided `db.sql` file into your aMember database to create the `?_passkey` table.
    - Example (replace `amember` with your DB name):
      ```bash
-     mysql -u USER -p amember < application/default/plugins/passkey/db.sql
+       mysql -u USER -p amember < application/default/plugins/protect/passkey/db.sql
      ```
 
 4. **Enable the Plugin**
