@@ -181,16 +181,6 @@ JS
      * AJAX handler for registration and login
      */
     public function onAjax(Am_Event $event)
-        // Require Composer autoload only here to avoid session conflicts
-        $autoload = __DIR__ . '/../../../../../vendor/autoload.php';
-        if (!file_exists($autoload)) {
-            error_log('Passkey plugin error: vendor/autoload.php not found. Run composer install.');
-            if (php_sapi_name() !== 'cli') {
-                echo '<b>Passkey plugin error:</b> vendor/autoload.php not found. Run <code>composer install</code> in your project root.';
-                exit;
-            }
-        }
-        require_once $autoload;
     {
         // Composer autoload only required here to avoid session conflicts
         $autoload = __DIR__ . '/../../../../../vendor/autoload.php';
