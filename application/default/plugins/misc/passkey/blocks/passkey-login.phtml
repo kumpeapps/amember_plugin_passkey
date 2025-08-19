@@ -1,0 +1,51 @@
+<div id="passkey-login-block">
+    <button type="button" id="btn-passkey-login">Login with Passkey</button>
+    <div id="passkey-login-status"></div>
+</div>
+<div style="color:red;font-weight:bold;">[Passkey Plugin Debug: Template loaded]</div>
+<script>
+document.getElementById('btn-passkey-login').onclick = async function() {
+    let resp = await fetch("/amember/ajax/passkey-login-init", {method: "POST", credentials: "same-origin"});
+    let data = await resp.json();
+    if (!data.options) return alert('Failed to get login options');
+    let publicKey = data.options;
+    publicKey.challenge = Uint8Array.from(atob(publicKey.challenge), c => c.charCodeAt(0));
+    if (publicKey.allowCredentials) {
+        publicKey.allowCredentials = publicKey.allowCredentials.map(function(cred) {
+            cred.id = Uint8Array.from(atob(cred.id), c => c.charCodeAt(0));
+            return cred;
+        });
+    }
+    let assertion;
+    try {
+        assertion = await navigator.credentials.get({publicKey});
+    } catch (e) {
+        document.getElementById('passkey-login-status').innerText = 'Login failed: ' + e;
+        return;
+    }
+    let authData = {
+        id: assertion.id,
+        rawId: btoa(String.fromCharCode(...new Uint8Array(assertion.rawId))),
+        type: assertion.type,
+        response: {
+            clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(assertion.response.clientDataJSON))),
+            authenticatorData: btoa(String.fromCharCode(...new Uint8Array(assertion.response.authenticatorData))),
+            signature: btoa(String.fromCharCode(...new Uint8Array(assertion.response.signature))),
+            userHandle: assertion.response.userHandle ? btoa(String.fromCharCode(...new Uint8Array(assertion.response.userHandle))) : null
+        }
+    };
+    let finish = await fetch("/amember/ajax/passkey-login-finish", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        credentials: "same-origin",
+        body: JSON.stringify({assertion: authData})
+    });
+    let finishData = await finish.json();
+    if (finishData.status === 'ok') {
+        document.getElementById('passkey-login-status').innerText = 'Login successful!';
+        window.location.reload();
+    } else {
+        document.getElementById('passkey-login-status').innerText = 'Login failed: ' + (finishData.error || 'Unknown error');
+    }
+};
+</script>

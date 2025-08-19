@@ -1,12 +1,46 @@
 <?php
+
 /**
  * Plugin Name: Passkey Login (FIDO2/WebAuthn)
  * Description: Enable Passkey (FIDO2/WebAuthn) login for members and admins.
  * Author: Copilot
+ * @am_plugin_group misc
+ * @am_plugin_api 6.0
  */
 
 class Am_Plugin_Passkey extends Am_Plugin
 {
+    /**
+     * Register config form using onSetupForms (Facebook plugin pattern)
+     */
+    public function onSetupForms(Am_Event_SetupForms $event)
+    {
+        $form = new Am_Form_Setup('passkey');
+        $form->setTitle('Passkey Login');
+        $form->addHtml('<!-- Passkey plugin: config form marker -->');
+        $form->addAdvCheckbox('enable_passkey')->setLabel('Enable Passkey Login');
+        $form->addText('rp_name', ['class' => 'am-el-wide'])->setLabel('Relying Party Name')->setValue('aMember');
+        $form->addText('rp_id', ['class' => 'am-el-wide'])->setLabel('Relying Party ID')->setValue($_SERVER['HTTP_HOST']);
+        $event->addForm($form);
+    }
+
+    /**
+     * Add Passkey login block to login form using aMember blocks system
+     */
+    public function onInitFinished(Am_Event $event)
+    {
+        $this->getDi()->blocks->add(
+            'login/form/before',
+            new Am_Block_Base(
+                'passkey-block:passkey-login.phtml',
+                'passkey-login',
+                $this,
+                null,
+                'Passkey Login',
+                100
+            )
+        );
+    }
     protected $id = 'passkey';
     protected $title = 'Passkey Login';
     protected $description = 'Enable Passkey (FIDO2/WebAuthn) login for members and admins.';
@@ -15,26 +49,21 @@ class Am_Plugin_Passkey extends Am_Plugin
     public function __construct($config, $id)
     {
         parent::__construct($config, $id);
+        Am_Di::getInstance()->hook->add('aJAX', [$this, 'onAjax']);
+        Am_Di::getInstance()->hook->add('userProfile', [$this, 'onUserProfile']);
+        Am_Di::getInstance()->hook->add('adminUserTabs', [$this, 'onAdminUserTabs']);
+        Am_Di::getInstance()->hook->add('authGetLoginForm', [$this, 'onAuthGetLoginForm']);
         $this->createTableIfNotExists();
-        Am_Di::getInstance()->hook->add(Am_Event::AJAX, [$this, 'onAjax']);
     }
 
-        public function onSetupForms(Am_Event_SetupForms $event)
-        {
-            $form = new Am_Form_Setup('passkey');
-            $form->setTitle('Passkey Login');
-            $form->addAdvCheckbox('enable_passkey')->setLabel('Enable Passkey Login');
-            $form->addText('rp_name', ['class' => 'am-el-wide'])->setLabel('Relying Party Name')->setValue('aMember');
-            $form->addText('rp_id', ['class' => 'am-el-wide'])->setLabel('Relying Party ID')->setValue($_SERVER['HTTP_HOST']);
-            $event->addForm($form);
-        }
+
 
     public function getFile()
     {
         return __FILE__;
     }
 
-    public function getId()
+    public function getId($oldStyle = true)
     {
         return $this->id;
     }
@@ -54,22 +83,27 @@ class Am_Plugin_Passkey extends Am_Plugin
         return '';
     }
 
-    public function getConfigPageId()
-    {
-        return 'setup';
-    }
+
     /**
      * Hook into user profile to allow registration of a passkey (FIDO2/WebAuthn credential)
      */
     public function onUserProfile(Am_Event_UserProfile $event)
     {
+        $config = Am_Di::getInstance()->config;
+        if (!$config->get('passkey.enable_passkey')) return;
         $user = $event->getUser();
         $form = $event->getForm();
-        $form->addHtml('<div id="passkey-register">
-            <button type="button" id="btn-passkey-register">Register Passkey</button>
-            <div id="passkey-register-status"></div>
-        </div>');
-        $form->addScript(<<<JS
+        // Only show registration UI if the current user is editing their own profile
+        $currentUser = null;
+        if (method_exists(Am_Di::getInstance()->auth, 'getUser')) {
+            $currentUser = Am_Di::getInstance()->auth->getUser();
+        }
+        if ($currentUser && $currentUser->pk() == $user->pk()) {
+            $form->addHtml('<!-- Passkey plugin: onUserProfile marker --><div id="passkey-register">
+                <button type="button" id="btn-passkey-register">Register Passkey</button>
+                <div id="passkey-register-status"></div>
+            </div>');
+            $form->addScript(<<<JS
 document.getElementById('btn-passkey-register').onclick = async function() {
     let resp = await fetch("/amember/ajax/passkey-register-init", {method: "POST", credentials: "same-origin"});
     let data = await resp.json();
@@ -107,7 +141,8 @@ document.getElementById('btn-passkey-register').onclick = async function() {
     }
 };
 JS
-        );
+            );
+        }
     }
 
     /**
@@ -115,57 +150,22 @@ JS
      */
     public function onAuthGetLoginForm(Am_Event_AuthGetLoginForm $event)
     {
+        $config = Am_Di::getInstance()->config;
+        if (!$config->get('passkey.enable_passkey')) return;
         $form = $event->getForm();
-        $form->addHtml('<div id="passkey-login">
-            <button type="button" id="btn-passkey-login">Login with Passkey</button>
-            <div id="passkey-login-status"></div>
-        </div>');
-        $form->addScript(<<<JS
-document.getElementById('btn-passkey-login').onclick = async function() {
-    let resp = await fetch("/amember/ajax/passkey-login-init", {method: "POST", credentials: "same-origin"});
-    let data = await resp.json();
-    if (!data.options) return alert('Failed to get login options');
-    let publicKey = data.options;
-    publicKey.challenge = Uint8Array.from(atob(publicKey.challenge), c => c.charCodeAt(0));
-    if (publicKey.allowCredentials) {
-        publicKey.allowCredentials = publicKey.allowCredentials.map(function(cred) {
-            cred.id = Uint8Array.from(atob(cred.id), c => c.charCodeAt(0));
-            return cred;
-        });
-    }
-    let assertion;
-    try {
-        assertion = await navigator.credentials.get({publicKey});
-    } catch (e) {
-        document.getElementById('passkey-login-status').innerText = 'Login failed: ' + e;
-        return;
-    }
-    let authData = {
-        id: assertion.id,
-        rawId: btoa(String.fromCharCode(...new Uint8Array(assertion.rawId))),
-        type: assertion.type,
-        response: {
-            clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(assertion.response.clientDataJSON))),
-            authenticatorData: btoa(String.fromCharCode(...new Uint8Array(assertion.response.authenticatorData))),
-            signature: btoa(String.fromCharCode(...new Uint8Array(assertion.response.signature))),
-            userHandle: assertion.response.userHandle ? btoa(String.fromCharCode(...new Uint8Array(assertion.response.userHandle))) : null
-        }
-    };
-    let finish = await fetch("/amember/ajax/passkey-login-finish", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        credentials: "same-origin",
-        body: JSON.stringify({assertion: authData})
-    });
-    let finishData = await finish.json();
-    if (finishData.status === 'ok') {
-        document.getElementById('passkey-login-status').innerText = 'Login successful!';
-        window.location.reload();
-    } else {
-        document.getElementById('passkey-login-status').innerText = 'Login failed: ' + (finishData.error || 'Unknown error');
-    }
-};
-JS
+        // Add debug marker
+        $form->addHtml('<div style="color:blue;font-weight:bold;">[Passkey Plugin Debug: onAuthGetLoginForm called]</div>');
+        // Also register the block here for redundancy
+        Am_Di::getInstance()->blocks->add(
+            'login/form/before',
+            new Am_Block_Base(
+                'passkey-block:passkey-login.phtml',
+                'passkey-login',
+                $this,
+                null,
+                'Passkey Login',
+                100
+            )
         );
     }
 
@@ -181,8 +181,27 @@ JS
      * AJAX handler for registration and login
      */
     public function onAjax(Am_Event $event)
+        // Require Composer autoload only here to avoid session conflicts
+        $autoload = __DIR__ . '/../../../../../vendor/autoload.php';
+        if (!file_exists($autoload)) {
+            error_log('Passkey plugin error: vendor/autoload.php not found. Run composer install.');
+            if (php_sapi_name() !== 'cli') {
+                echo '<b>Passkey plugin error:</b> vendor/autoload.php not found. Run <code>composer install</code> in your project root.';
+                exit;
+            }
+        }
+        require_once $autoload;
     {
-        require_once __DIR__ . '/../../../../../vendor/autoload.php';
+        // Composer autoload only required here to avoid session conflicts
+        $autoload = __DIR__ . '/../../../../../vendor/autoload.php';
+        if (!file_exists($autoload)) {
+            error_log('Passkey plugin error: vendor/autoload.php not found. Run composer install.');
+            if (php_sapi_name() !== 'cli') {
+                echo '<b>Passkey plugin error:</b> vendor/autoload.php not found. Run <code>composer install</code> in your project root.';
+                exit;
+            }
+        }
+        require_once $autoload;
         $action = $_REQUEST['action'] ?? '';
         $session = Am_Di::getInstance()->session;
         $auth = Am_Di::getInstance()->auth;
