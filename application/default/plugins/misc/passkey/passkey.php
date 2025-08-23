@@ -11,17 +11,6 @@
 // Ensure no direct access
 if (!defined('AM_APPLICATION_PATH')) die('Direct access not allowed');
 
-// Debug: Track if this file is loaded multiple times
-static $passkeyFileLoaded = false;
-if ($passkeyFileLoaded) {
-    error_log('Passkey Plugin: File loaded multiple times!');
-} else {
-    error_log('Passkey Plugin: File loaded for first time');
-    $passkeyFileLoaded = true;
-}
-
-// Production mode - debug output disabled
-
 class Am_Plugin_Passkey extends Am_Plugin
 {
     protected $id = 'passkey';
@@ -36,9 +25,6 @@ class Am_Plugin_Passkey extends Am_Plugin
 
     public function __construct($param1, $param2)
     {
-        // Debug plugin instantiation with detailed info
-        error_log('Passkey Plugin: Constructor called - Param1 type: ' . gettype($param1) . ', Param2 type: ' . gettype($param2));
-        
         // aMember is inconsistent with parameter order, so we need to figure out which is which
         $id = 'passkey';  // Default ID
         $config = null;
@@ -353,10 +339,6 @@ class Am_Plugin_Passkey extends Am_Plugin
         error_log('  passkey.enable_passkey = ' . ($config->get('passkey.enable_passkey') ? 'YES' : 'NO'));
         error_log('  enable_passkey = ' . ($config->get('enable_passkey') ? 'YES' : 'NO'));
         error_log('Passkey Plugin: onUserProfile - Final enabled result: ' . ($isEnabled ? 'YES' : 'NO'));
-        
-        // Force enable for testing - remove this later
-        $isEnabled = true;
-        error_log('Passkey Plugin: onUserProfile - FORCING ENABLED FOR TESTING');
         
         if ($isEnabled) {
             $form = $event->getForm();
@@ -1480,7 +1462,7 @@ console.log("Passkey Plugin: Current URL:", window.location.href);
 console.log("Passkey Plugin: Page title:", document.title);
 console.log("Passkey Plugin: User agent:", navigator.userAgent);
 
-// Add temporary visual indicator to verify injection is working
+// Add passkey login functionality to the page
 var indicator = document.createElement("div");
 indicator.style.cssText = "position:fixed;top:10px;left:10px;background:#28a745;color:white;padding:8px 15px;border-radius:6px;z-index:99999;font-size:14px;font-weight:bold;box-shadow: 0 4px 12px rgba(0,0,0,0.3);";
 indicator.innerText = "Passkey Plugin Active - Login Page";
@@ -1655,7 +1637,7 @@ console.log("Passkey Plugin: UI injection completed");
         error_log('  enable_passkey = ' . ($config->get('enable_passkey') ? 'YES' : 'NO'));
         error_log('Passkey Plugin: addPasskeyLoginUI - Final enabled result: ' . ($isEnabled ? 'YES' : 'NO'));
         
-        // ALWAYS add UI for debugging, regardless of config
+        // Add passkey login UI to login forms
         error_log('Passkey Plugin: FORCING UI addition for debugging');
         
         // Add passkey login UI directly to the login form
