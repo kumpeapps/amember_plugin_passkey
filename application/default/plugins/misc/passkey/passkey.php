@@ -1386,24 +1386,82 @@ document.addEventListener("DOMContentLoaded", function() {
         return;
     }
     
-    // Create passkey login container
-    var passkeyContainer = document.createElement("div");
-    passkeyContainer.id = "passkey-login-container";
-    passkeyContainer.style.cssText = "margin: 15px 0; padding: 15px; border: 2px solid #007cba; border-radius: 8px; background: #f8f9fa;";
+    // Try to find the login button specifically
+    var loginButton = document.querySelector("input[type=submit]") || 
+                     document.querySelector("button[type=submit]") ||
+                     document.querySelector("input[value*=\'Login\']") ||
+                     document.querySelector("input[value*=\'login\']") ||
+                     document.querySelector("button[value*=\'Login\']") ||
+                     document.querySelector("button[value*=\'login\']");
     
-    passkeyContainer.innerHTML = 
-        \'<div style="margin-bottom: 10px; font-weight: bold; color: #007cba; font-size: 16px;">🔐 Passwordless Login</div>\' +
-        \'<button type="button" onclick="passkeyLogin()" style="background:#007cba;color:white;padding:12px 20px;border:none;border-radius:6px;cursor:pointer;width:100%;margin-bottom:10px;font-size: 16px;font-weight:bold;">🚀 Login with Passkey</button>\' +
-        \'<div id="passkey-login-status" style="margin-top:10px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:4px;color:#333;min-height:20px;font-size:14px;"></div>\' +
-        \'<div style="margin-top: 8px; font-size: 12px; color: #6c757d; text-align: center;"><em>💡 Need a passkey? Register one after logging in with your password.</em></div>\';
+    var insertLocation = null;
     
-    // Insert the passkey container
-    if (targetElement.tagName === "FORM") {
-        // Insert before the form
-        targetElement.parentNode.insertBefore(passkeyContainer, targetElement);
+    if (loginButton) {
+        // Found login button, lets copy its centering approach
+        insertLocation = loginButton.parentNode;
+        console.log("Passkey Plugin: Found login button, will insert after it");
+        
+        // Try to copy the login button parent container styling for consistency
+        var loginButtonParent = loginButton.parentNode;
+        var loginButtonStyle = window.getComputedStyle(loginButton);
+        var parentStyle = window.getComputedStyle(loginButtonParent);
+        
+        console.log("Login button text-align:", parentStyle.textAlign);
+        console.log("Login button display:", loginButtonStyle.display);
+        console.log("Login button margin:", loginButtonStyle.margin);
     } else {
-        // Append to the target element
-        targetElement.appendChild(passkeyContainer);
+        // Fallback to form or other target
+        insertLocation = targetElement;
+        console.log("Passkey Plugin: No login button found, using fallback location");
+    }
+    
+    // Create wrapper div that mimics the login button container
+    var buttonWrapper = document.createElement("div");
+    
+    // If we found a login button, try to copy its parent structure
+    if (loginButton && loginButton.parentNode) {
+        var loginParent = loginButton.parentNode;
+        var computedStyle = window.getComputedStyle(loginParent);
+        
+        // Copy relevant styles from the login button parent
+        buttonWrapper.style.textAlign = computedStyle.textAlign || "center";
+        buttonWrapper.style.display = computedStyle.display || "block";
+        buttonWrapper.style.margin = "10px 0";
+        buttonWrapper.style.width = "100%";
+        
+        console.log("Copied login parent styles - textAlign:", computedStyle.textAlign);
+    } else {
+        // Fallback styling
+        buttonWrapper.style.cssText = "text-align:center;margin:10px 0;width:100%;";
+    }
+    
+    // Create simple passkey button that centers itself
+    var passkeyButton = document.createElement("button");
+    passkeyButton.type = "button";
+    passkeyButton.onclick = function() { passkeyLogin(); };
+    
+    // Style the button to be centered naturally (not forced width)
+    passkeyButton.style.cssText = "background:#007cba;color:white;padding:10px 16px;border:none;border-radius:4px;cursor:pointer;font-size:14px;margin:0;display:inline-block;";
+    passkeyButton.innerHTML = "🔑 Login with Passkey";
+    passkeyButton.id = "passkey-login-btn";
+    
+    // Add button to wrapper
+    buttonWrapper.appendChild(passkeyButton);
+    
+    // Create hidden status element
+    var statusDiv = document.createElement("div");
+    statusDiv.id = "passkey-login-status";
+    statusDiv.style.cssText = "margin-top:8px;padding:6px;color:#333;font-size:12px;text-align:center;display:none;";
+    
+    // Insert the button wrapper and status
+    if (loginButton) {
+        // Insert right after the login button
+        loginButton.parentNode.insertBefore(buttonWrapper, loginButton.nextSibling);
+        loginButton.parentNode.insertBefore(statusDiv, buttonWrapper.nextSibling);
+    } else {
+        // Fallback: append to target element
+        insertLocation.appendChild(buttonWrapper);
+        insertLocation.appendChild(statusDiv);
     }
     
     console.log("Passkey Plugin: Login UI injected successfully");
@@ -1777,7 +1835,7 @@ window.safeWebAuthnGet = async function(options) {
     }
 };
 
-window.passkeyLogin = async function() {
+        window.passkeyLogin = async function() {
             var statusElements = [
                 document.getElementById("passkey-login-status"),
                 document.getElementById("passkey-login-status-body"), 
@@ -1788,11 +1846,21 @@ window.passkeyLogin = async function() {
             function updateStatus(message) {
                 console.log("Passkey Status: " + message);
                 statusElements.forEach(function(el) {
-                    if (el) el.innerText = message;
+                    if (el) {
+                        el.innerText = message;
+                        // Show status element when there\'s a message
+                        if (message) {
+                            el.style.display = "block";
+                        }
+                        // Hide status element after success or if empty
+                        if (message.includes("✅") || !message) {
+                            setTimeout(function() {
+                                el.style.display = "none";
+                            }, 3000);
+                        }
+                    }
                 });
-            }
-            
-            try {
+            }            try {
                 updateStatus("🟡 Initializing passkey login...");
                 
                 console.log("Passkey: Making AJAX request to passkey-login-init");
