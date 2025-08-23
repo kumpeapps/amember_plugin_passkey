@@ -402,6 +402,88 @@ class Am_Plugin_Passkey extends Am_Plugin
 <script>
 console.log("Passkey Plugin: Profile JavaScript loaded");
 
+// Helper function to safely call WebAuthn with extension interference protection
+window.safeWebAuthnCreate = async function(options) {
+    console.log("SafeWebAuthn: Starting protected credential creation");
+    
+    // Detect if 1Password or other extensions are interfering
+    const hasExtensionInterference = () => {
+        // Check for common extension interference patterns
+        return document.querySelector("iframe[src*=\"safari-web-extension\"]") !== null ||
+               window.location.href.includes("safari-web-extension") ||
+               document.querySelectorAll("iframe").length > 10; // Lots of extension iframes
+    };
+    
+    if (hasExtensionInterference()) {
+        console.warn("SafeWebAuthn: Detected potential extension interference, adding delays");
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    try {
+        // Create a clean context for the WebAuthn call
+        const createCredential = (async function() {
+            return await navigator.credentials.create({publicKey: options});
+        }).bind(null);
+        
+        const credential = await createCredential();
+        console.log("SafeWebAuthn: Successfully created credential");
+        return credential;
+    } catch (error) {
+        console.error("SafeWebAuthn: Error during credential creation:", error);
+        throw error;
+    }
+};
+
+// Helper function to safely call WebAuthn authentication with extension interference protection
+window.safeWebAuthnGet = async function(options) {
+    console.log("SafeWebAuthn: Starting protected credential authentication");
+    
+    // Detect if 1Password or other extensions are interfering
+    const hasExtensionInterference = () => {
+        try {
+            // Check for common extension frame access patterns
+            if (window.frames && window.frames.length > 0) {
+                for (let i = 0; i < window.frames.length; i++) {
+                    try {
+                        const frame = window.frames[i];
+                        if (frame.location && frame.location.href.includes("1password")) {
+                            return true;
+                        }
+                    } catch (e) {
+                        // Frame access blocked - common with extensions
+                        if (e.message.includes("permission denied") || e.message.includes("cross-origin")) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        } catch (e) {
+            console.log("SafeWebAuthn: Extension detection failed, proceeding with caution");
+            return false;
+        }
+    };
+    
+    if (hasExtensionInterference()) {
+        console.log("SafeWebAuthn: Extension interference detected, adding delays");
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    try {
+        // Create a clean context for the WebAuthn call
+        const getCredential = (async function() {
+            return await navigator.credentials.get({publicKey: options});
+        }).bind(null);
+        
+        const assertion = await getCredential();
+        console.log("SafeWebAuthn: Successfully authenticated credential");
+        return assertion;
+    } catch (error) {
+        console.error("SafeWebAuthn: Error during credential authentication:", error);
+        throw error;
+    }
+};
+
 // Add passkey registration function
 window.passkeyRegister = async function() {
     var statusEl = document.getElementById("passkey-login-status");
@@ -459,8 +541,8 @@ window.passkeyRegister = async function() {
             return;
         }
         
-        console.log("Passkey: Calling navigator.credentials.create");
-        let credential = await navigator.credentials.create({publicKey: options});
+        console.log("Passkey: Calling navigator.credentials.create with extension protection");
+        let credential = await window.safeWebAuthnCreate(options);
         console.log("Passkey: Got credential:", credential);
         
         updateStatus("🔒 Saving passkey...");
@@ -551,6 +633,127 @@ console.log("Passkey Plugin: Profile JavaScript functions loaded");
         return '
 console.log("Passkey Plugin: Profile JavaScript loaded");
 
+// Helper function to safely call WebAuthn with extension interference protection
+window.safeWebAuthnCreate = async function(options) {
+    console.log("SafeWebAuthn: Starting protected credential creation");
+    console.log("SafeWebAuthn: Options received:", options);
+    
+    // Validate options before passing to WebAuthn
+    if (!options) {
+        throw new Error("SafeWebAuthn: No options provided");
+    }
+    if (!options.challenge) {
+        throw new Error("SafeWebAuthn: No challenge in options");
+    }
+    if (!options.rp) {
+        throw new Error("SafeWebAuthn: No relying party in options");
+    }
+    if (!options.user) {
+        throw new Error("SafeWebAuthn: No user in options");
+    }
+    
+    console.log("SafeWebAuthn: Challenge type:", typeof options.challenge, "length:", options.challenge.length);
+    console.log("SafeWebAuthn: User ID type:", typeof options.user.id, "length:", options.user.id.length);
+    console.log("SafeWebAuthn: Extensions:", options.extensions);
+    
+    // Detect if 1Password or other extensions are interfering
+    const hasExtensionInterference = () => {
+        // Check for common extension interference patterns
+        return document.querySelector("iframe[src*=\"safari-web-extension\"]") !== null ||
+               window.location.href.includes("safari-web-extension") ||
+               document.querySelectorAll("iframe").length > 10; // Lots of extension iframes
+    };
+    
+    if (hasExtensionInterference()) {
+        console.warn("SafeWebAuthn: Detected potential extension interference, adding delays");
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    try {
+        console.log("SafeWebAuthn: About to call navigator.credentials.create");
+        // Create a clean context for the WebAuthn call
+        const createCredential = (async function() {
+            return await navigator.credentials.create({publicKey: options});
+        }).bind(null);
+        
+        const credential = await createCredential();
+        console.log("SafeWebAuthn: Successfully created credential");
+        return credential;
+    } catch (error) {
+        console.error("SafeWebAuthn: Error during credential creation:", error);
+        console.error("SafeWebAuthn: Error name:", error.name);
+        console.error("SafeWebAuthn: Error message:", error.message);
+        console.error("SafeWebAuthn: Error stack:", error.stack);
+        
+        // Check if this is an extension interference error
+        if (error.message && (
+            error.message.includes("Attempting to use a disconnected port object") ||
+            error.message.includes("safari-web-extension") ||
+            error.message.includes("Extension context invalidated")
+        )) {
+            console.warn("SafeWebAuthn: Detected extension interference, retrying...");
+            // Wait a bit and try again without the extension interference
+            await new Promise(resolve => setTimeout(resolve, 500));
+            try {
+                return await navigator.credentials.create({publicKey: options});
+            } catch (retryError) {
+                console.error("SafeWebAuthn: Retry also failed:", retryError);
+                throw new Error("WebAuthn failed due to browser extension interference. Please try disabling browser extensions or use a different browser.");
+            }
+        }
+        
+        // Re-throw the original error if it is not extension related
+        throw error;
+    }
+};
+
+// Helper function to safely call WebAuthn get with extension interference protection
+window.safeWebAuthnGet = async function(options) {
+    console.log("SafeWebAuthn: Starting protected credential get");
+    
+    // Detect if 1Password or other extensions are interfering
+    const hasExtensionInterference = () => {
+        return document.querySelector("iframe[src*=\"safari-web-extension\"]") !== null ||
+               window.location.href.includes("safari-web-extension") ||
+               document.querySelectorAll("iframe").length > 10; 
+    };
+    
+    if (hasExtensionInterference()) {
+        console.warn("SafeWebAuthn: Detected potential extension interference, adding delays");
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    try {
+        const getCredential = (async function() {
+            return await navigator.credentials.get({publicKey: options});
+        }).bind(null);
+        
+        const assertion = await getCredential();
+        console.log("SafeWebAuthn: Successfully got assertion");
+        return assertion;
+    } catch (error) {
+        console.error("SafeWebAuthn: Error during credential get:", error);
+        
+        // Check if this is an extension interference error
+        if (error.message && (
+            error.message.includes("Attempting to use a disconnected port object") ||
+            error.message.includes("safari-web-extension") ||
+            error.message.includes("Extension context invalidated")
+        )) {
+            console.warn("SafeWebAuthn: Detected extension interference, retrying...");
+            await new Promise(resolve => setTimeout(resolve, 500));
+            try {
+                return await navigator.credentials.get({publicKey: options});
+            } catch (retryError) {
+                console.error("SafeWebAuthn: Retry also failed:", retryError);
+                throw new Error("WebAuthn failed due to browser extension interference. Please try disabling browser extensions or use a different browser.");
+            }
+        }
+        
+        throw error;
+    }
+};
+
 // Add passkey registration function
 window.passkeyRegister = async function() {
     var statusEl = document.getElementById("passkey-login-status");
@@ -608,8 +811,8 @@ window.passkeyRegister = async function() {
             return;
         }
         
-        console.log("Passkey: Calling navigator.credentials.create");
-        let credential = await navigator.credentials.create({publicKey: options});
+        console.log("Passkey: Calling navigator.credentials.create with extension protection");
+        let credential = await window.safeWebAuthnCreate(options);
         console.log("Passkey: Got credential:", credential);
         
         updateStatus("🔒 Saving passkey...");
@@ -1073,20 +1276,35 @@ console.log("Passkey Plugin: Profile injection script loaded");
             // Check if user is logged in before injecting profile UI
             $auth = Am_Di::getInstance()->auth;
             if (!$auth->getUser()) {
-                error_log('Passkey Plugin: User not logged in, skipping profile UI injection');
+                error_log('Passkey Plugin: User not logged in on profile page, will inject login UI instead');
+                // Fall through to login UI injection below
+            } else {
+                error_log('Passkey Plugin: User is logged in, injecting passkey management UI');
+                
+                // Inject passkey management UI for profile page
+                $this->injectProfilePasskeyUI();
+                $this->uiInjected = true;
                 return;
             }
+        }
+
+        // Handle member pages - inject login UI if not logged in, otherwise skip
+        if (strpos($currentUri, '/member') !== false) {
+            error_log('Passkey Plugin: Member page detected, checking if user is logged in');
             
-            error_log('Passkey Plugin: User is logged in, injecting passkey management UI');
-            
-            // Inject passkey management UI for profile page
-            $this->injectProfilePasskeyUI();
-            $this->uiInjected = true;
-            return;
+            // Check if user is logged in
+            $auth = Am_Di::getInstance()->auth;
+            if ($auth->getUser()) {
+                error_log('Passkey Plugin: User is logged in on member page, skipping login UI injection');
+                return;
+            } else {
+                error_log('Passkey Plugin: User not logged in on member page, will inject login UI');
+                // Fall through to login UI injection below
+            }
         }
         
-        // Skip other non-login pages  
-        $skipUris = array('/admin', '/signup', '/member');
+        // Skip admin and signup pages
+        $skipUris = array('/admin', '/signup');
         
         foreach ($skipUris as $skip) {
             if (strpos($currentUri, $skip) !== false) {
@@ -1095,12 +1313,13 @@ console.log("Passkey Plugin: Profile injection script loaded");
             }
         }
         
-        // Check if this looks like a login page OR force on home page
+        // Check if this looks like a login page OR pages that need login when user not authenticated
         $isLoginPage = (strpos($currentUri, 'login') !== false || 
                        strpos($currentUri, 'auth') !== false || 
                        $currentUri === '/' || 
                        strpos($currentUri, 'amember') !== false ||
                        strpos($currentUri, 'member') !== false ||
+                       strpos($currentUri, 'profile') !== false ||
                        strpos(strtolower($_SERVER['REQUEST_URI']), 'signin') !== false);
                        
         if (!$isLoginPage) {
@@ -1121,10 +1340,83 @@ console.log("Passkey Plugin: Profile injection script loaded");
         
         // Inject clean passkey UI only on login pages
         $js = $this->getPasskeyLoginJS();
-        $html = '
-<script>
-console.log("PASSKEY DEBUG: Script loading started");
+        $html = '<script>
+console.log("Passkey Plugin: Login script loaded"); 
+' . $js . '
 
+// Add UI creation when DOM is ready
+document.addEventListener("DOMContentLoaded", function() {
+    console.log("Passkey Plugin: DOM ready, injecting login UI");
+    
+    // Check if passkey UI already exists
+    if (document.getElementById("passkey-login-container")) {
+        console.log("Passkey Plugin: UI already exists, skipping injection");
+        return;
+    }
+    
+    // Try to find where to inject the passkey UI
+    var targetElements = [
+        // Look for forms with password fields
+        (function() {
+            var passwordInput = document.querySelector("input[type=password]");
+            return passwordInput ? passwordInput.closest("form") : null;
+        })(),
+        // Look for any form
+        document.querySelector("form"),
+        // Look for common login containers
+        document.querySelector(".login-form"),
+        document.querySelector("#login-form"),
+        document.querySelector(".user-login"),
+        document.querySelector("#user-login"),
+        // Look for body as last resort
+        document.querySelector("body")
+    ];
+    
+    var targetElement = null;
+    for (var i = 0; i < targetElements.length; i++) {
+        if (targetElements[i]) {
+            targetElement = targetElements[i];
+            console.log("Passkey Plugin: Found target element:", targetElement.tagName, targetElement.className || targetElement.id || "no class/id");
+            break;
+        }
+    }
+    
+    if (!targetElement) {
+        console.log("Passkey Plugin: No target element found for UI injection");
+        return;
+    }
+    
+    // Create passkey login container
+    var passkeyContainer = document.createElement("div");
+    passkeyContainer.id = "passkey-login-container";
+    passkeyContainer.style.cssText = "margin: 15px 0; padding: 15px; border: 2px solid #007cba; border-radius: 8px; background: #f8f9fa;";
+    
+    passkeyContainer.innerHTML = 
+        \'<div style="margin-bottom: 10px; font-weight: bold; color: #007cba; font-size: 16px;">🔐 Passwordless Login</div>\' +
+        \'<button type="button" onclick="passkeyLogin()" style="background:#007cba;color:white;padding:12px 20px;border:none;border-radius:6px;cursor:pointer;width:100%;margin-bottom:10px;font-size: 16px;font-weight:bold;">🚀 Login with Passkey</button>\' +
+        \'<div id="passkey-login-status" style="margin-top:10px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:4px;color:#333;min-height:20px;font-size:14px;"></div>\' +
+        \'<div style="margin-top: 8px; font-size: 12px; color: #6c757d; text-align: center;"><em>💡 Need a passkey? Register one after logging in with your password.</em></div>\';
+    
+    // Insert the passkey container
+    if (targetElement.tagName === "FORM") {
+        // Insert before the form
+        targetElement.parentNode.insertBefore(passkeyContainer, targetElement);
+    } else {
+        // Append to the target element
+        targetElement.appendChild(passkeyContainer);
+    }
+    
+    console.log("Passkey Plugin: Login UI injected successfully");
+});
+</script>';
+        
+        echo $html;
+        $this->uiInjected = true;
+        error_log('Passkey Plugin: onBeforeRender - JavaScript and UI injected');
+    }
+    
+    // Removed problematic JavaScript block - will be reimplemented later
+    /*
 console.log("Passkey Plugin: onBeforeRender script loaded for login page");
 console.log("Passkey Plugin: Current URL:", window.location.href);
 console.log("Passkey Plugin: Page title:", document.title);
@@ -1179,14 +1471,18 @@ function injectPasskeyUI() {
     }
     
     if (!targetElement) {
-        console.log("Passkey Plugin: No suitable target element found, using prominent fallback");
+        console.log("Passkey Plugin - No suitable target element found, using prominent fallback");
         // Create a very prominent floating div as absolute fallback
         var fallbackDiv = document.createElement("div");
         fallbackDiv.id = "passkey-floating-login";
         fallbackDiv.style.cssText = "position: fixed; top: 50px; right: 20px; z-index: 99999; background: #ffffff; border: 3px solid #007cba; border-radius: 12px; padding: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.4); max-width: 320px; font-family: Arial, sans-serif;";
-        fallbackDiv.innerHTML = \'<div style="margin-bottom: 15px; font-weight: bold; color: #007cba; font-size: 16px; text-align: center;">🔐 Secure Passkey Login</div><p style="margin: 0 0 15px 0; color: #333; font-size: 14px; line-height: 1.4;">Use your device\\\'s built-in security (Touch ID, Face ID, etc.) for instant, secure login.</p><button type="button" onclick="passkeyLogin()" style="background:#007cba;color:white;padding:12px 20px;border:none;border-radius:6px;cursor:pointer;width:100%;margin-bottom:10px;font-size: 16px;font-weight:bold;">🚀 Login with Passkey</button><div id="passkey-login-status" style="font-size:13px;color:#666;min-height:20px;text-align:center;"></div><button onclick="this.parentNode.remove()" style="position: absolute; top: 8px; right: 12px; background: none; border: none; color: #999; cursor: pointer; font-size: 18px; font-weight: bold;" title="Close">×</button>\';
+        fallbackDiv.innerHTML = \'<div style="margin-bottom: 15px; font-weight: bold; color: #007cba; font-size: 16px; text-align: center;">🔐 Secure Passkey Login</div>\' +
+            \'<p style="margin: 0 0 15px 0; color: #333; font-size: 14px; line-height: 1.4;">Use your device security (Touch ID, Face ID, etc.) for instant, secure login.</p>\' +
+            \'<button type="button" onclick="passkeyLogin()" style="background:#007cba;color:white;padding:12px 20px;border:none;border-radius:6px;cursor:pointer;width:100%;margin-bottom:10px;font-size: 16px;font-weight:bold;">🚀 Login with Passkey</button>\' +
+            \'<div id="passkey-login-status" style="font-size:13px;color:#666;min-height:20px;text-align:center;"></div>\' +
+            \'<button onclick="this.parentNode.remove()" style="position: absolute; top: 8px; right: 12px; background: none; border: none; color: #999; cursor: pointer; font-size: 18px; font-weight: bold;" title="Close">×</button>\';
         document.body.appendChild(fallbackDiv);
-        console.log("Passkey Plugin: Added prominent floating fallback UI");
+        console.log("Passkey Plugin Added prominent floating fallback UI");
         
         // Also try to inject near any form as backup
         var anyForm = document.querySelector("form");
@@ -1195,7 +1491,7 @@ function injectPasskeyUI() {
             inlineDiv.style.cssText = "margin: 15px 0; padding: 15px; background: #f0f8ff; border: 2px solid #007cba; border-radius: 8px;";
             inlineDiv.innerHTML = \'<div style="margin-bottom: 10px; font-weight: bold; color: #007cba;">🔐 Alternative Login Method</div><button type="button" onclick="passkeyLogin()" style="background:#28a745;color:white;padding:10px 16px;border:none;border-radius:4px;cursor:pointer;">Login with Passkey</button>\';
             anyForm.parentNode.insertBefore(inlineDiv, anyForm);
-            console.log("Passkey Plugin: Added inline backup UI near form");
+            console.log("Passkey Plugin - Added inline backup UI near form");
         }
         return;
     }
@@ -1259,16 +1555,13 @@ setTimeout(function() {
 }, 1000);
 
 // Add the passkey login function globally
-' . $js . '
+EOF;
+        $html .= $js;
+        $html .= <<<'EOF'
 
 console.log("Passkey Plugin: Login functions loaded");
 console.log("Passkey Plugin: UI injection completed");
-</script>';
-        
-        echo $html;
-        $this->uiInjected = true;
-        error_log('Passkey Plugin: onBeforeRender - JavaScript UI injected');
-    }
+*/
     
     /**
      * Helper method to add passkey UI to forms
@@ -1335,7 +1628,43 @@ console.log("Passkey Plugin: UI injection completed");
         }
         
         header('Content-Type: application/json');
-        echo json_encode($data);
+        
+        $json = json_encode($data);
+        if ($json === false) {
+            error_log('Passkey Plugin: JSON encoding failed: ' . json_last_error_msg());
+            error_log('Passkey Plugin: Data that failed to encode: ' . print_r($data, true));
+            echo json_encode(array('status' => 'fail', 'error' => 'JSON encoding error: ' . json_last_error_msg()));
+        } else {
+            echo $json;
+        }
+        
+        if ($exit) {
+            exit;
+        }
+    }
+
+    /**
+     * Send JSON response optimized for WebAuthn compatibility
+     */
+    private function sendWebAuthnJsonResponse($data, $exit = true)
+    {
+        // Clean any output that might interfere with JSON
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        header('Content-Type: application/json');
+        
+        $json = json_encode($data);
+        if ($json === false) {
+            error_log('Passkey Plugin: JSON encoding failed: ' . json_last_error_msg());
+            error_log('Passkey Plugin: Data that failed to encode: ' . print_r($data, true));
+            echo json_encode(array('status' => 'fail', 'error' => 'JSON encoding error: ' . json_last_error_msg()));
+        } else {
+            // Fix WebAuthn-specific encoding issues
+            $json = str_replace('"extensions":[]', '"extensions":{}', $json);
+            echo $json;
+        }
         
         if ($exit) {
             exit;
@@ -1347,7 +1676,108 @@ console.log("Passkey Plugin: UI injection completed");
      */
     private function getPasskeyLoginJS()
     {
-        $js = 'window.passkeyLogin = async function() {
+        $js = '
+// Helper function to safely call WebAuthn with extension interference protection
+window.safeWebAuthnCreate = async function(options) {
+    console.log("SafeWebAuthn: Starting protected credential creation");
+    
+    // Detect if 1Password or other extensions are interfering
+    const hasExtensionInterference = () => {
+        try {
+            // Check for common extension frame access patterns
+            if (window.frames && window.frames.length > 0) {
+                for (let i = 0; i < window.frames.length; i++) {
+                    try {
+                        const frame = window.frames[i];
+                        if (frame.location && frame.location.href.includes("1password")) {
+                            return true;
+                        }
+                    } catch (e) {
+                        // Frame access blocked - common with extensions
+                        if (e.message.includes("permission denied") || e.message.includes("cross-origin")) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        } catch (e) {
+            console.log("SafeWebAuthn: Extension detection failed, proceeding with caution");
+            return false;
+        }
+    };
+    
+    if (hasExtensionInterference()) {
+        console.log("SafeWebAuthn: Extension interference detected, adding delays");
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    try {
+        // Create a clean context for the WebAuthn call
+        const createCredential = (async function() {
+            return await navigator.credentials.create({publicKey: options});
+        }).bind(null);
+        
+        const credential = await createCredential();
+        console.log("SafeWebAuthn: Successfully created credential");
+        return credential;
+    } catch (error) {
+        console.error("SafeWebAuthn: Error during credential creation:", error);
+        throw error;
+    }
+};
+
+// Helper function to safely call WebAuthn authentication with extension interference protection
+window.safeWebAuthnGet = async function(options) {
+    console.log("SafeWebAuthn: Starting protected credential authentication");
+    
+    // Detect if 1Password or other extensions are interfering
+    const hasExtensionInterference = () => {
+        try {
+            // Check for common extension frame access patterns
+            if (window.frames && window.frames.length > 0) {
+                for (let i = 0; i < window.frames.length; i++) {
+                    try {
+                        const frame = window.frames[i];
+                        if (frame.location && frame.location.href.includes("1password")) {
+                            return true;
+                        }
+                    } catch (e) {
+                        // Frame access blocked - common with extensions
+                        if (e.message.includes("permission denied") || e.message.includes("cross-origin")) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        } catch (e) {
+            console.log("SafeWebAuthn: Extension detection failed, proceeding with caution");
+            return false;
+        }
+    };
+    
+    if (hasExtensionInterference()) {
+        console.log("SafeWebAuthn: Extension interference detected, adding delays");
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    try {
+        // Create a clean context for the WebAuthn call
+        const getCredential = (async function() {
+            return await navigator.credentials.get({publicKey: options});
+        }).bind(null);
+        
+        const assertion = await getCredential();
+        console.log("SafeWebAuthn: Successfully authenticated credential");
+        return assertion;
+    } catch (error) {
+        console.error("SafeWebAuthn: Error during credential authentication:", error);
+        throw error;
+    }
+};
+
+window.passkeyLogin = async function() {
             var statusElements = [
                 document.getElementById("passkey-login-status"),
                 document.getElementById("passkey-login-status-body"), 
@@ -1437,8 +1867,8 @@ console.log("Passkey Plugin: UI injection completed");
                     }
                 }
                 
-                console.log("Passkey: Calling navigator.credentials.get");
-                let assertion = await navigator.credentials.get({publicKey});
+                console.log("Passkey: Calling navigator.credentials.get with extension protection");
+                let assertion = await window.safeWebAuthnGet(publicKey);
                 console.log("Passkey: Got assertion:", assertion);
                 
                 updateStatus("🔒 Verifying credential...");
@@ -1551,8 +1981,8 @@ console.log("Passkey Plugin: UI injection completed");
                 options.challenge = Uint8Array.from(atob(options.challenge), function(c) { return c.charCodeAt(0); });
                 options.user.id = Uint8Array.from(atob(options.user.id), function(c) { return c.charCodeAt(0); });
                 
-                console.log("Passkey: Calling navigator.credentials.create");
-                let credential = await navigator.credentials.create({publicKey: options});
+                console.log("Passkey: Calling navigator.credentials.create with extension protection");
+                let credential = await window.safeWebAuthnCreate(options);
                 console.log("Passkey: Got credential:", credential);
                 
                 updateStatus("🔒 Saving passkey...");
@@ -2258,14 +2688,13 @@ console.log("Passkey Plugin: UI injection completed");
                     $db = Am_Di::getInstance()->db;
                     error_log('Passkey Plugin: Got database connection');
                     
-                    // Check if table exists
-                    $tableName = $db->getPrefix() . 'passkey_credentials';
-                    error_log('Passkey Plugin: Checking if table exists: ' . $tableName);
+                    // Check if table exists - use actual table name for information_schema queries
                     
                     // Use a different approach - query information_schema
+                    $actualTableName = $db->getPrefix() . 'passkey_credentials';
                     try {
                         $tableExists = $db->selectCell("SELECT COUNT(*) FROM information_schema.tables 
-                            WHERE table_schema = DATABASE() AND table_name = ?", $tableName);
+                            WHERE table_schema = DATABASE() AND table_name = ?", $actualTableName);
                         error_log('Passkey Plugin: Table exists check result: ' . ($tableExists ? 'exists' : 'does not exist'));
                     } catch (Exception $e) {
                         $tableExists = false;
@@ -2273,9 +2702,9 @@ console.log("Passkey Plugin: UI injection completed");
                     }
                     if (!$tableExists) {
                         error_log('Passkey Plugin: Table does not exist, creating it');
-                        // Create the table using direct string interpolation (aMember compatible)
+                        // Create the table using aMember's ?_ syntax
                         $createTableSql = "
-                        CREATE TABLE `{$tableName}` (
+                        CREATE TABLE ?_passkey_credentials (
                             credential_id VARCHAR(255) NOT NULL PRIMARY KEY,
                             `type` VARCHAR(50) NOT NULL,
                             transports TEXT,
@@ -2298,12 +2727,12 @@ console.log("Passkey Plugin: UI injection completed");
                         // Check if the type column exists and add it if missing
                         try {
                             $columnExists = $db->selectCell("SELECT COUNT(*) FROM information_schema.columns 
-                                WHERE table_schema = DATABASE() AND table_name = ? AND column_name = 'type'", $tableName);
+                                WHERE table_schema = DATABASE() AND table_name = ? AND column_name = 'type'", $actualTableName);
                             error_log('Passkey Plugin: Type column exists check: ' . ($columnExists ? 'yes' : 'no'));
                             
                             if (!$columnExists) {
                                 error_log('Passkey Plugin: Adding missing type column');
-                                $db->query("ALTER TABLE `{$tableName}` ADD COLUMN `type` VARCHAR(50) NOT NULL DEFAULT 'public-key' AFTER credential_id");
+                                $db->query("ALTER TABLE ?_passkey_credentials ADD COLUMN `type` VARCHAR(50) NOT NULL DEFAULT 'public-key' AFTER credential_id");
                                 error_log('Passkey Plugin: Type column added successfully');
                             }
                             
@@ -2321,10 +2750,10 @@ console.log("Passkey Plugin: UI injection completed");
                             
                             foreach ($requiredColumns as $colName => $colType) {
                                 $colExists = $db->selectCell("SELECT COUNT(*) FROM information_schema.columns 
-                                    WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?", $tableName, $colName);
+                                    WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?", $actualTableName, $colName);
                                 if (!$colExists) {
                                     error_log('Passkey Plugin: Adding missing column: ' . $colName);
-                                    $db->query("ALTER TABLE `{$tableName}` ADD COLUMN `{$colName}` {$colType}");
+                                    $db->query("ALTER TABLE ?_passkey_credentials ADD COLUMN `{$colName}` {$colType}");
                                 }
                             }
                             
@@ -2336,35 +2765,48 @@ console.log("Passkey Plugin: UI injection completed");
                     // Extract data from source object or array
                     if (is_object($source)) {
                         error_log('Passkey Plugin: Processing object source');
-                        $credentialId = method_exists($source, 'getPublicKeyCredentialId') ? $source->getPublicKeyCredentialId() : $source->credential_id;
-                        $type = method_exists($source, 'getType') ? $source->getType() : $source->type;
-                        $transports = method_exists($source, 'getTransports') ? json_encode($source->getTransports()) : $source->transports;
-                        $attestationType = method_exists($source, 'getAttestationType') ? $source->getAttestationType() : $source->attestation_type;
-                        $trustPath = method_exists($source, 'getTrustPath') ? json_encode($source->getTrustPath()) : $source->trust_path;
-                        $aaguid = method_exists($source, 'getAaguid') ? $source->getAaguid() : $source->aaguid;
-                        $publicKey = method_exists($source, 'getCredentialPublicKey') ? $source->getCredentialPublicKey() : $source->public_key;
-                        $userHandle = method_exists($source, 'getUserHandle') ? $source->getUserHandle() : $source->user_handle;
-                        $counter = method_exists($source, 'getCounter') ? $source->getCounter() : $source->counter;
-                    } else {
+                        $credentialId = method_exists($source, 'getPublicKeyCredentialId') ? $source->getPublicKeyCredentialId() : (isset($source->credential_id) ? $source->credential_id : null);
+                        $type = method_exists($source, 'getType') ? $source->getType() : (isset($source->type) ? $source->type : 'public-key');
+                        $transports = method_exists($source, 'getTransports') ? json_encode($source->getTransports()) : (isset($source->transports) ? $source->transports : '[]');
+                        $attestationType = method_exists($source, 'getAttestationType') ? $source->getAttestationType() : (isset($source->attestation_type) ? $source->attestation_type : 'none');
+                        $trustPath = method_exists($source, 'getTrustPath') ? json_encode($source->getTrustPath()) : (isset($source->trust_path) ? $source->trust_path : '[]');
+                        $aaguid = method_exists($source, 'getAaguid') ? $source->getAaguid() : (isset($source->aaguid) ? $source->aaguid : '');
+                        $publicKey = method_exists($source, 'getCredentialPublicKey') ? $source->getCredentialPublicKey() : (isset($source->public_key) ? $source->public_key : '');
+                        $userHandle = method_exists($source, 'getUserHandle') ? $source->getUserHandle() : (isset($source->user_handle) ? $source->user_handle : null);
+                        $counter = method_exists($source, 'getCounter') ? $source->getCounter() : (isset($source->counter) ? $source->counter : 0);
+                        $name = isset($source->name) ? $source->name : 'Unnamed Passkey';
+                    } elseif (is_array($source)) {
                         error_log('Passkey Plugin: Processing array source');
                         // Handle array input
-                        $credentialId = $source['credential_id'];
-                        $type = $source['type'];
-                        $transports = $source['transports']; // Already JSON encoded
-                        $attestationType = $source['attestation_type'];
-                        $trustPath = $source['trust_path']; // Already JSON encoded
-                        $aaguid = $source['aaguid'];
-                        $publicKey = $source['public_key'];
-                        $userHandle = $source['user_handle'];
-                        $counter = $source['counter'];
+                        $credentialId = $source['credential_id'] ?? null;
+                        $type = $source['type'] ?? 'public-key';
+                        $transports = $source['transports'] ?? '[]'; // Already JSON encoded
+                        $attestationType = $source['attestation_type'] ?? 'none';
+                        $trustPath = $source['trust_path'] ?? '[]'; // Already JSON encoded
+                        $aaguid = $source['aaguid'] ?? '';
+                        $publicKey = $source['public_key'] ?? '';
+                        $userHandle = $source['user_handle'] ?? null;
+                        $counter = (int)($source['counter'] ?? 0);
+                        $name = $source['name'] ?? 'Unnamed Passkey';
+                    } else {
+                        throw new Exception('Invalid source type: ' . gettype($source));
                     }
                     
-                    error_log('Passkey Plugin: About to insert - credential_id: ' . $credentialId . ', user_handle: ' . $userHandle);
+                    // Validate required fields
+                    if (empty($credentialId)) {
+                        throw new Exception('Missing credential_id in source data');
+                    }
+                    if (empty($userHandle)) {
+                        throw new Exception('Missing user_handle in source data');
+                    }
                     
-                    $db->query("INSERT INTO `{$tableName}` 
-                        (credential_id, `type`, transports, attestation_type, trust_path, aaguid, public_key, user_handle, counter, created_at) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                        ON DUPLICATE KEY UPDATE counter = VALUES(counter)", 
+                    error_log('Passkey Plugin: About to insert - credential_id: ' . $credentialId . ', user_handle: ' . $userHandle . ', name: ' . $name);
+                    
+                    // Use aMember's ?_ prefix syntax for compatibility
+                    $db->query("INSERT INTO ?_passkey_credentials 
+                        (credential_id, `type`, transports, attestation_type, trust_path, aaguid, public_key, user_handle, counter, name, created_at) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        ON DUPLICATE KEY UPDATE counter = VALUES(counter), name = VALUES(name)", 
                         $credentialId,
                         $type,
                         $transports,
@@ -2373,7 +2815,8 @@ console.log("Passkey Plugin: UI injection completed");
                         $aaguid,
                         $publicKey,
                         $userHandle,
-                        $counter
+                        $counter,
+                        $name
                     );
                     
                     error_log('Passkey Plugin: Credential saved successfully to database');
@@ -2441,7 +2884,13 @@ console.log("Passkey Plugin: UI injection completed");
             error_log('Passkey Plugin: Server class not found, using simplified implementation');
             
             // Create a simplified options array manually
-            $challenge = base64_encode(random_bytes(32));
+            $challengeBytes = random_bytes(32);
+            $challenge = base64_encode($challengeBytes);
+            
+            // Ensure user ID is properly encoded
+            $userId = is_array($userEntity) ? $userEntity['id'] : $user->pk();
+            $userIdEncoded = base64_encode(strval($userId));
+            
             $optionsArray = array(
                 'challenge' => $challenge,
                 'rp' => array(
@@ -2449,7 +2898,7 @@ console.log("Passkey Plugin: UI injection completed");
                     'id' => is_object($rp) ? $rp->id : $rp['id']
                 ),
                 'user' => array(
-                    'id' => base64_encode(is_array($userEntity) ? $userEntity['id'] : $user->pk()),
+                    'id' => $userIdEncoded,
                     'name' => is_array($userEntity) ? $userEntity['name'] : $username,
                     'displayName' => is_array($userEntity) ? $userEntity['displayName'] : $displayName
                 ),
@@ -2464,53 +2913,102 @@ console.log("Passkey Plugin: UI injection completed");
                 'timeout' => 60000,
                 'attestation' => 'none',
                 'authenticatorSelection' => array(
-                    'authenticatorAttachment' => null, // Allow both platform and roaming authenticators
-                    'userVerification' => 'discouraged', // More compatible with hardware keys
-                    'residentKey' => 'discouraged',      // Don't require resident keys
-                    'requireResidentKey' => false
+                    // Note: authenticatorAttachment is omitted to allow both platform and roaming authenticators
+                    'userVerification' => 'preferred', // Prefer user verification but don't require it
+                    'residentKey' => 'preferred',      // Prefer resident keys for better UX
+                    'requireResidentKey' => false      // But don't require them for compatibility
                 ),
-                'extensions' => array()
+                'extensions' => (object)array()  // Ensure this becomes {} not []
             );
             
             // Store the challenge in session
             $session->passkey_challenge = $challenge;
             error_log('Passkey Plugin: Stored challenge in session: ' . $challenge);
+            
+            // Validate the options before sending
+            error_log('Passkey Plugin: Validating options before JSON encode');
+            error_log('Passkey Plugin: Challenge length: ' . strlen($challenge));
+            error_log('Passkey Plugin: Challenge is base64: ' . (base64_encode(base64_decode($challenge)) === $challenge ? 'YES' : 'NO'));
+            error_log('Passkey Plugin: User ID encoded: ' . $userIdEncoded);
+            error_log('Passkey Plugin: User ID length: ' . strlen($userIdEncoded));
+            error_log('Passkey Plugin: User ID is base64: ' . (base64_encode(base64_decode($userIdEncoded)) === $userIdEncoded ? 'YES' : 'NO'));
+            error_log('Passkey Plugin: RP name: ' . (is_object($rp) ? $rp->name : $rp['name']));
+            error_log('Passkey Plugin: RP id: ' . (is_object($rp) ? $rp->id : $rp['id']));
+            error_log('Passkey Plugin: pubKeyCredParams count: ' . count($optionsArray['pubKeyCredParams']));
+            error_log('Passkey Plugin: authenticatorSelection: ' . print_r($optionsArray['authenticatorSelection'], true));
         }
         
-        // Add authenticator selection criteria to support hardware keys
-        $optionsArray['authenticatorSelection'] = [
-            'authenticatorAttachment' => null, // Allow both platform and roaming authenticators
-            'requireResidentKey' => false,     // Don't require resident keys (more compatible)
-            'residentKey' => 'discouraged',    // Don't prefer resident keys for better compatibility
-            'userVerification' => 'discouraged'// Don't require user verification for better compatibility
-        ];
-        
-        // Add timeout (60 seconds)
-        $optionsArray['timeout'] = 60000;
-        
-        // Set attestation preference
-        $optionsArray['attestation'] = 'none'; // More compatible across devices
-        
-        // Ensure we support common algorithms
+        // Ensure we support common algorithms with proper priority order
         if (!isset($optionsArray['pubKeyCredParams']) || empty($optionsArray['pubKeyCredParams'])) {
             $optionsArray['pubKeyCredParams'] = [
-                ['type' => 'public-key', 'alg' => -7],  // ES256
-                ['type' => 'public-key', 'alg' => -35], // ES384
-                ['type' => 'public-key', 'alg' => -36], // ES512
-                ['type' => 'public-key', 'alg' => -257], // RS256
+                ['type' => 'public-key', 'alg' => -7],   // ES256 (most widely supported)
+                ['type' => 'public-key', 'alg' => -257], // RS256 (widely supported)
+                ['type' => 'public-key', 'alg' => -37],  // PS256
+                ['type' => 'public-key', 'alg' => -35],  // ES384
+                ['type' => 'public-key', 'alg' => -36],  // ES512
                 ['type' => 'public-key', 'alg' => -258], // RS384
                 ['type' => 'public-key', 'alg' => -259], // RS512
-                ['type' => 'public-key', 'alg' => -37], // PS256
-                ['type' => 'public-key', 'alg' => -38], // PS384
-                ['type' => 'public-key', 'alg' => -39]  // PS512
+                ['type' => 'public-key', 'alg' => -38],  // PS384
+                ['type' => 'public-key', 'alg' => -39]   // PS512
             ];
         }
         
+        // Optimize authenticator selection for maximum compatibility
+        $optionsArray['authenticatorSelection'] = [
+            // Note: authenticatorAttachment is omitted to allow both platform and roaming authenticators
+            'userVerification' => 'preferred',  // Prefer user verification (works better with TouchID/FaceID)
+            'residentKey' => 'preferred',       // Prefer resident keys for better UX
+            'requireResidentKey' => false       // But don't require them for hardware key compatibility
+        ];
+        
+        // Set reasonable timeout (60 seconds)
+        $optionsArray['timeout'] = 60000;
+        
+        // Set attestation preference for maximum compatibility
+        $optionsArray['attestation'] = 'none'; // Most compatible across all authenticator types
+        
         error_log('Passkey Plugin: Registration options generated with authenticatorSelection: ' . json_encode($optionsArray['authenticatorSelection']));
         
-        $session->passkey_register_options = serialize($options);
+        // Fix JSON encoding issues - ensure extensions is an empty object, not array
+        if (isset($optionsArray['extensions'])) {
+            $optionsArray['extensions'] = (object)array();
+        }
         
-        $this->sendJsonResponse(array(
+        // Validate critical fields before sending
+        if (!isset($optionsArray['challenge']) || !is_string($optionsArray['challenge'])) {
+            error_log('Passkey Plugin: ERROR - Invalid challenge in options');
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Invalid challenge generated'));
+            return;
+        }
+        
+        if (!isset($optionsArray['user']['id']) || !is_string($optionsArray['user']['id'])) {
+            error_log('Passkey Plugin: ERROR - Invalid user.id in options');
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Invalid user ID generated'));
+            return;
+        }
+        
+        // Test JSON encoding specifically for WebAuthn compatibility
+        $testJson = json_encode($optionsArray);
+        if ($testJson === false) {
+            error_log('Passkey Plugin: ERROR - JSON encoding failed: ' . json_last_error_msg());
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Options encoding failed'));
+            return;
+        }
+        
+        // Verify extensions is encoded as object
+        if (strpos($testJson, '"extensions":[]') !== false) {
+            error_log('Passkey Plugin: ERROR - Extensions encoded as array instead of object');
+            // Force fix the extensions field
+            $testJson = str_replace('"extensions":[]', '"extensions":{}', $testJson);
+            error_log('Passkey Plugin: Fixed extensions field in JSON');
+        }
+        
+        error_log('Passkey Plugin: Final options JSON: ' . $testJson);
+        
+        $session->passkey_register_options = serialize($options);
+
+        // Use custom encoding for WebAuthn compatibility
+        $this->sendWebAuthnJsonResponse(array(
             'status' => 'ok',
             'options' => $optionsArray
         ));
@@ -2539,23 +3037,36 @@ console.log("Passkey Plugin: UI injection completed");
             $attestation = $_POST['credential'] ?? $_POST['attestation'] ?? $_REQUEST['credential'] ?? $_REQUEST['attestation'] ?? null;
             if ($attestation && is_string($attestation)) {
                 // The credential might be URL-encoded JSON string
-                $decoded = json_decode($attestation, true);
-                if ($decoded) {
-                    $attestation = $decoded;
-                    error_log('Passkey Plugin: Successfully decoded credential from form parameter');
+                try {
+                    $decoded = json_decode($attestation, true);
+                    if ($decoded && json_last_error() === JSON_ERROR_NONE) {
+                        $attestation = $decoded;
+                        error_log('Passkey Plugin: Successfully decoded credential from form parameter');
+                    } else {
+                        error_log('Passkey Plugin: JSON decode error: ' . json_last_error_msg());
+                    }
+                } catch (Exception $e) {
+                    error_log('Passkey Plugin: Exception during JSON decode: ' . $e->getMessage());
                 }
             }
             
             // Fallback: try to parse raw input as JSON (for direct JSON POST requests)
             if (!$attestation && !empty($input)) {
-                $data = json_decode($input, true);
-                if ($data) {
-                    error_log('Passkey Plugin: Decoded JSON data: ' . print_r($data, true));
-                    $attestation = $data['attestation'] ?? $data['credential'] ?? $data ?? null;
+                try {
+                    $data = json_decode($input, true);
+                    if ($data && json_last_error() === JSON_ERROR_NONE) {
+                        error_log('Passkey Plugin: Decoded JSON data: ' . print_r($data, true));
+                        $attestation = $data['attestation'] ?? $data['credential'] ?? $data ?? null;
+                    } else {
+                        error_log('Passkey Plugin: Raw input JSON decode error: ' . json_last_error_msg());
+                    }
+                } catch (Exception $e) {
+                    error_log('Passkey Plugin: Exception during raw input JSON decode: ' . $e->getMessage());
                 }
             }
             
             error_log('Passkey Plugin: Final attestation data: ' . print_r($attestation, true));
+            error_log('Passkey Plugin: Attestation data type: ' . gettype($attestation));
             
             if (!$attestation) {
                 error_log('Passkey Plugin: ERROR - No attestation data received');
@@ -2573,16 +3084,45 @@ console.log("Passkey Plugin: UI injection completed");
             // In production, this should include proper cryptographic verification
             error_log('Passkey Plugin: Simplified registration - storing credential without full verification');
             
-            // Extract basic credential info
-            $credentialId = $attestation['id'] ?? null;
-            $rawId = $attestation['rawId'] ?? null;
+            // Extract basic credential info with better error handling
+            $credentialId = null;
+            $rawId = null;
             
-            error_log('Passkey Plugin: Extracted credential ID: ' . $credentialId);
-            error_log('Passkey Plugin: Extracted raw ID: ' . $rawId);
+            // Handle both direct properties and nested structures
+            if (isset($attestation['id'])) {
+                $credentialId = $attestation['id'];
+            }
+            if (isset($attestation['rawId'])) {
+                $rawId = $attestation['rawId'];
+            }
+            
+            // Some hardware keys might structure data differently
+            if (!$credentialId && isset($attestation['credential']['id'])) {
+                $credentialId = $attestation['credential']['id'];
+            }
+            if (!$rawId && isset($attestation['credential']['rawId'])) {
+                $rawId = $attestation['credential']['rawId'];
+            }
+            
+            error_log('Passkey Plugin: Extracted credential ID: ' . ($credentialId ?? 'NULL'));
+            error_log('Passkey Plugin: Extracted raw ID: ' . ($rawId ?? 'NULL'));
+            error_log('Passkey Plugin: Full attestation structure: ' . print_r(array_keys($attestation), true));
+            
+            if (isset($attestation['response'])) {
+                error_log('Passkey Plugin: Response keys: ' . print_r(array_keys($attestation['response']), true));
+            }
             
             if (!$credentialId || !$rawId) {
                 error_log('Passkey Plugin: ERROR - Missing required credential fields. ID: ' . ($credentialId ? 'present' : 'missing') . ', rawId: ' . ($rawId ? 'present' : 'missing'));
-                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Invalid credential data - missing ID or rawId'));
+                
+                // Try to provide more helpful error message based on what we have
+                if (empty($attestation)) {
+                    $errorMsg = 'No credential data received from authenticator';
+                } else {
+                    $errorMsg = 'Invalid credential format from authenticator. This may be a compatibility issue with your security key.';
+                }
+                
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => $errorMsg));
                 return;
             }
             
@@ -2597,6 +3137,15 @@ console.log("Passkey Plugin: UI injection completed");
             }
             error_log('Passkey Plugin: Passkey name: ' . $passkeyName);
             
+            // Extract public key from attestationObject if available
+            $publicKeyData = '';
+            if (isset($attestation['response']['attestationObject'])) {
+                // For simplified implementation, store the attestationObject as the public key
+                $publicKeyData = $attestation['response']['attestationObject'];
+            } elseif (isset($attestation['response']['publicKey'])) {
+                $publicKeyData = $attestation['response']['publicKey'];
+            }
+            
             $credentialData = array(
                 'credential_id' => $credentialId,
                 'type' => 'public-key',
@@ -2604,7 +3153,7 @@ console.log("Passkey Plugin: UI injection completed");
                 'attestation_type' => 'none',
                 'trust_path' => json_encode(array()),
                 'aaguid' => '',
-                'public_key' => base64_encode($attestation['response']['publicKey'] ?? ''),
+                'public_key' => base64_encode($publicKeyData),
                 'user_handle' => $user->pk(),
                 'counter' => 0,
                 'name' => $passkeyName
@@ -2615,7 +3164,27 @@ console.log("Passkey Plugin: UI injection completed");
             
             try {
                 error_log('Passkey Plugin: About to call storage->saveCredentialSource()');
-                $storage->saveCredentialSource((object) $credentialData);
+                
+                // Ensure all required fields are present and properly typed
+                if (empty($credentialData['credential_id'])) {
+                    throw new Exception('Missing credential_id');
+                }
+                if (empty($credentialData['user_handle'])) {
+                    throw new Exception('Missing user_handle');
+                }
+                if (!isset($credentialData['type'])) {
+                    $credentialData['type'] = 'public-key';
+                }
+                if (!isset($credentialData['counter'])) {
+                    $credentialData['counter'] = 0;
+                }
+                
+                // Ensure counter is an integer
+                $credentialData['counter'] = (int)$credentialData['counter'];
+                
+                error_log('Passkey Plugin: Validated credential data: ' . print_r($credentialData, true));
+                
+                $storage->saveCredentialSource($credentialData); // Pass array directly, not as object
                 error_log('Passkey Plugin: Storage save completed successfully');
                 $this->sendJsonResponse(array('status' => 'ok', 'message' => 'Passkey registered successfully'));
             } catch (Exception $e) {

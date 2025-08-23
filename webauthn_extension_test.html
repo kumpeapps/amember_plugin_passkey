@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebAuthn Extension Interference Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 3px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; font-size: 16px; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>WebAuthn Extension Interference Test</h1>
+    <p>This test will help identify if browser extensions are interfering with WebAuthn calls.</p>
+    
+    <div class="test-section">
+        <h2>Extension Detection</h2>
+        <div id="extension-info"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Direct WebAuthn Test</h2>
+        <p>This test calls WebAuthn directly without any interference protection.</p>
+        <button onclick="testDirectWebAuthn()">Test Direct WebAuthn</button>
+        <div id="direct-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Protected WebAuthn Test</h2>
+        <p>This test uses delay and isolation techniques to avoid extension interference.</p>
+        <button onclick="testProtectedWebAuthn()">Test Protected WebAuthn</button>
+        <div id="protected-result"></div>
+    </div>
+
+    <script>
+        // Check for extension interference
+        function checkExtensions() {
+            const resultDiv = document.getElementById('extension-info');
+            let html = '';
+            
+            // Count total iframes
+            const iframes = document.querySelectorAll('iframe');
+            html += `<div class="info">Total iframes on page: ${iframes.length}</div>`;
+            
+            // Check for safari-web-extension iframes
+            const safariExtIframes = document.querySelectorAll('iframe[src*="safari-web-extension"]');
+            if (safariExtIframes.length > 0) {
+                html += `<div class="error">⚠️ Detected ${safariExtIframes.length} Safari extension iframe(s)</div>`;
+            } else {
+                html += `<div class="success">✅ No Safari extension iframes detected</div>`;
+            }
+            
+            // Check for 1Password specific indicators
+            if (window.location.href.includes('safari-web-extension')) {
+                html += `<div class="error">⚠️ Running in Safari extension context</div>`;
+            }
+            
+            // Check for other extension indicators
+            const extensionElements = document.querySelectorAll('[id*="extension"], [class*="extension"]');
+            if (extensionElements.length > 0) {
+                html += `<div class="info">Found ${extensionElements.length} potential extension element(s)</div>`;
+            }
+            
+            resultDiv.innerHTML = html;
+        }
+        
+        // Test options (same structure as your actual implementation)
+        const testOptions = {
+            challenge: new Uint8Array(32),
+            rp: { name: "Test RP", id: window.location.hostname },
+            user: {
+                id: new Uint8Array(16),
+                name: "test@example.com",
+                displayName: "Test User"
+            },
+            pubKeyCredParams: [
+                { alg: -7, type: "public-key" },   // ES256
+                { alg: -257, type: "public-key" }, // RS256
+                { alg: -37, type: "public-key" },  // PS256
+                { alg: -35, type: "public-key" },  // ES384
+                { alg: -36, type: "public-key" },  // ES512
+                { alg: -8, type: "public-key" }    // EdDSA
+            ],
+            authenticatorSelection: {
+                authenticatorAttachment: null,
+                userVerification: "preferred",
+                residentKey: "preferred",
+                requireResidentKey: false
+            },
+            timeout: 60000,
+            attestation: "none",
+            extensions: {}
+        };
+        
+        // Direct WebAuthn test
+        async function testDirectWebAuthn() {
+            const resultDiv = document.getElementById('direct-result');
+            resultDiv.innerHTML = '<div class="info">Testing direct WebAuthn call...</div>';
+            
+            try {
+                console.log("Direct test: Calling navigator.credentials.create");
+                const credential = await navigator.credentials.create({ publicKey: testOptions });
+                resultDiv.innerHTML = '<div class="success">✅ Direct WebAuthn call succeeded!</div>';
+                console.log("Direct test: Success", credential);
+            } catch (error) {
+                console.error("Direct test: Error", error);
+                resultDiv.innerHTML = `<div class="error">❌ Direct WebAuthn failed: ${error.name}: ${error.message}</div>`;
+            }
+        }
+        
+        // Protected WebAuthn test (with delay and isolation)
+        async function testProtectedWebAuthn() {
+            const resultDiv = document.getElementById('protected-result');
+            resultDiv.innerHTML = '<div class="info">Testing protected WebAuthn call...</div>';
+            
+            try {
+                console.log("Protected test: Adding delay for extension settling");
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+                console.log("Protected test: Creating isolated context");
+                const createCredential = (async function() {
+                    return await navigator.credentials.create({ publicKey: testOptions });
+                }).bind(null);
+                
+                console.log("Protected test: Calling isolated credential creation");
+                const credential = await createCredential();
+                resultDiv.innerHTML = '<div class="success">✅ Protected WebAuthn call succeeded!</div>';
+                console.log("Protected test: Success", credential);
+            } catch (error) {
+                console.error("Protected test: Error", error);
+                resultDiv.innerHTML = `<div class="error">❌ Protected WebAuthn failed: ${error.name}: ${error.message}</div>`;
+            }
+        }
+        
+        // Run extension check on load
+        window.onload = checkExtensions;
+    </script>
+</body>
+</html>
