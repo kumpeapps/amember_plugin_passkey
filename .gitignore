@@ -233,5 +233,14 @@ pip-selfcheck.json
 # http://iamzed.com/2009/05/07/a-primer-on-virtualenv/
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,python,venv,dotenv,virtualenv,composer
+
+# aMember Plugin Auto-created Files
 facebook/
 vendor/
+
+# Auto-created files in plugin directory (current directory when installed)
+composer.json
+composer.lock
+vendor/
+*.sql
+db.sql
