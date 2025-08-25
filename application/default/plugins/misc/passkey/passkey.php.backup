@@ -198,69 +198,6 @@ class Am_Plugin_Passkey extends Am_Plugin
             $form->addText('rp_name', ['class' => 'am-el-wide'])->setLabel('Relying Party Name')->setValue('aMember');
             $form->addText('rp_id', ['class' => 'am-el-wide'])->setLabel('Relying Party ID')->setValue($_SERVER['HTTP_HOST']);
             
-            // WebAuthn Configuration Options
-            $form->addHtml('<h3>WebAuthn Configuration</h3>');
-            
-            $form->addText('timeout', ['class' => 'am-el-wide'])
-                ->setLabel('Authentication Timeout (milliseconds)')
-                ->setValue('60000')
-                ->addRule('callback', 'Must be a number between 10000 and 300000', function($val) {
-                    return is_numeric($val) && $val >= 10000 && $val <= 300000;
-                });
-            
-            $form->addSelect('user_verification', ['class' => 'am-el-wide'])
-                ->setLabel('User Verification Requirement')
-                ->loadOptions([
-                    'required' => 'Required - Always require biometric/PIN verification',
-                    'preferred' => 'Preferred - Request verification but allow fallback (Recommended)',
-                    'discouraged' => 'Discouraged - Avoid verification when possible'
-                ])
-                ->setValue('preferred');
-            
-            $form->addSelect('resident_key', ['class' => 'am-el-wide'])
-                ->setLabel('Resident Key Preference')
-                ->loadOptions([
-                    'required' => 'Required - Only allow passkeys stored on device',
-                    'preferred' => 'Preferred - Prefer device storage but allow external (Recommended)',
-                    'discouraged' => 'Discouraged - Prefer external security keys'
-                ])
-                ->setValue('preferred');
-            
-            $form->addAdvCheckbox('require_resident_key')
-                ->setLabel('Require Resident Key Support')
-                ->addRule('callback', 'Cannot require resident keys when preference is discouraged', function($val, $form) {
-                    if ($val && $form->getValue('resident_key') === 'discouraged') {
-                        return false;
-                    }
-                    return true;
-                });
-            
-            $form->addSelect('attestation', ['class' => 'am-el-wide'])
-                ->setLabel('Attestation Preference')
-                ->loadOptions([
-                    'none' => 'None - No attestation required (Recommended for compatibility)',
-                    'indirect' => 'Indirect - Allow anonymous attestation',
-                    'direct' => 'Direct - Require identifying attestation'
-                ])
-                ->setValue('none');
-            
-            $form->addSelect('authenticator_attachment', ['class' => 'am-el-wide'])
-                ->setLabel('Authenticator Attachment')
-                ->loadOptions([
-                    '' => 'Both - Allow platform and cross-platform authenticators (Recommended)',
-                    'platform' => 'Platform Only - Built-in authenticators (TouchID, FaceID, Windows Hello)',
-                    'cross-platform' => 'Cross-Platform Only - External security keys (USB, NFC)'
-                ])
-                ->setValue('');
-            
-            // Configuration Guidelines as separate static elements
-            $form->addStatic()->setLabel('')->setContent('<strong>Configuration Guidelines:</strong>');
-            $form->addStatic()->setLabel('Timeout')->setContent('60 seconds is recommended for most users');
-            $form->addStatic()->setLabel('User Verification')->setContent('"Preferred" works best with TouchID/FaceID while supporting hardware keys');
-            $form->addStatic()->setLabel('Resident Key')->setContent('"Preferred" provides the best user experience across all device types');
-            $form->addStatic()->setLabel('Attestation')->setContent('"None" provides maximum compatibility with all authenticators');
-            $form->addStatic()->setLabel('Authenticator Attachment')->setContent('"Both" provides maximum flexibility for users with different devices');
-            
             error_log('Passkey Plugin: Form created successfully, adding to event...');
             $event->addForm($form);
             $formRegistered = true;
@@ -2925,23 +2862,6 @@ window.safeWebAuthnGet = async function(options) {
     }
 
     /**
-     * Get WebAuthn configuration values with defaults
-     */
-    private function getWebAuthnConfig()
-    {
-        $config = Am_Di::getInstance()->config;
-        
-        return [
-            'timeout' => (int)($config->get('misc.passkey.timeout') ?: 60000),
-            'user_verification' => $config->get('misc.passkey.user_verification') ?: 'preferred',
-            'resident_key' => $config->get('misc.passkey.resident_key') ?: 'preferred',
-            'require_resident_key' => (bool)$config->get('misc.passkey.require_resident_key'),
-            'attestation' => $config->get('misc.passkey.attestation') ?: 'none',
-            'authenticator_attachment' => $config->get('misc.passkey.authenticator_attachment') ?: ''
-        ];
-    }
-
-    /**
      * Handle passkey registration initialization
      */
     private function handleRegisterInit($auth, $session, $rp, $storage)
@@ -2994,9 +2914,6 @@ window.safeWebAuthnGet = async function(options) {
         } else {
             error_log('Passkey Plugin: Server class not found, using simplified implementation');
             
-            // Get WebAuthn configuration from admin settings
-            $webauthnConfig = $this->getWebAuthnConfig();
-            
             // Create a simplified options array manually
             $challengeBytes = random_bytes(32);
             $challenge = base64_encode($challengeBytes);
@@ -3024,23 +2941,16 @@ window.safeWebAuthnGet = async function(options) {
                     array('alg' => -36, 'type' => 'public-key'),  // ES512 (ECDSA with SHA-512)
                     array('alg' => -8, 'type' => 'public-key')    // EdDSA (Ed25519 signature algorithms)
                 ),
-                'timeout' => $webauthnConfig['timeout'],
-                'attestation' => $webauthnConfig['attestation'],
+                'timeout' => 60000,
+                'attestation' => 'none',
                 'authenticatorSelection' => array(
-                    'userVerification' => $webauthnConfig['user_verification'],
-                    'residentKey' => $webauthnConfig['resident_key'],
-                    'requireResidentKey' => $webauthnConfig['require_resident_key']
+                    // Note: authenticatorAttachment is omitted to allow both platform and roaming authenticators
+                    'userVerification' => 'preferred', // Prefer user verification but don't require it
+                    'residentKey' => 'preferred',      // Prefer resident keys for better UX
+                    'requireResidentKey' => false      // But don't require them for compatibility
                 ),
                 'extensions' => (object)array()  // Ensure this becomes {} not []
             );
-            
-            // Add authenticatorAttachment if configured (omit if empty to allow both types)
-            if (!empty($webauthnConfig['authenticator_attachment'])) {
-                $optionsArray['authenticatorSelection']['authenticatorAttachment'] = $webauthnConfig['authenticator_attachment'];
-                error_log('Passkey Plugin: Set authenticatorAttachment to: ' . $webauthnConfig['authenticator_attachment']);
-            } else {
-                error_log('Passkey Plugin: Omitting authenticatorAttachment to allow both platform and cross-platform authenticators');
-            }
             
             // Store the challenge in session
             $session->passkey_challenge = $challenge;
@@ -3074,23 +2984,19 @@ window.safeWebAuthnGet = async function(options) {
             ];
         }
         
-        // Update authenticator selection with configured values
+        // Optimize authenticator selection for maximum compatibility
         $optionsArray['authenticatorSelection'] = [
-            'userVerification' => $webauthnConfig['user_verification'],
-            'residentKey' => $webauthnConfig['resident_key'],
-            'requireResidentKey' => $webauthnConfig['require_resident_key']
+            // Note: authenticatorAttachment is omitted to allow both platform and roaming authenticators
+            'userVerification' => 'preferred',  // Prefer user verification (works better with TouchID/FaceID)
+            'residentKey' => 'preferred',       // Prefer resident keys for better UX
+            'requireResidentKey' => false       // But don't require them for hardware key compatibility
         ];
         
-        // Add authenticatorAttachment if configured (omit if empty to allow both types)
-        if (!empty($webauthnConfig['authenticator_attachment'])) {
-            $optionsArray['authenticatorSelection']['authenticatorAttachment'] = $webauthnConfig['authenticator_attachment'];
-        }
+        // Set reasonable timeout (60 seconds)
+        $optionsArray['timeout'] = 60000;
         
-        // Set configured timeout
-        $optionsArray['timeout'] = $webauthnConfig['timeout'];
-        
-        // Set configured attestation preference
-        $optionsArray['attestation'] = $webauthnConfig['attestation'];
+        // Set attestation preference for maximum compatibility
+        $optionsArray['attestation'] = 'none'; // Most compatible across all authenticator types
         
         error_log('Passkey Plugin: Registration options generated with authenticatorSelection: ' . json_encode($optionsArray['authenticatorSelection']));
         
@@ -3331,9 +3237,6 @@ window.safeWebAuthnGet = async function(options) {
      */
     private function handleLoginInit($session, $rp, $storage)
     {
-        // Get WebAuthn configuration from admin settings
-        $webauthnConfig = $this->getWebAuthnConfig();
-        
         if (!class_exists('Webauthn\\Server')) {
             error_log('Passkey Plugin: Server class not available, using simplified login init');
             
@@ -3341,8 +3244,8 @@ window.safeWebAuthnGet = async function(options) {
             $challenge = base64_encode(random_bytes(32));
             $optionsArray = array(
                 'challenge' => $challenge,
-                'timeout' => $webauthnConfig['timeout'],
-                'userVerification' => $webauthnConfig['user_verification'],
+                'timeout' => 60000,
+                'userVerification' => 'preferred',
                 'allowCredentials' => array(),
                 'extensions' => array()
             );
@@ -3367,9 +3270,9 @@ window.safeWebAuthnGet = async function(options) {
         // Get the options as array to modify them
         $optionsArray = $options->jsonSerialize();
         
-        // Apply configured settings
-        $optionsArray['timeout'] = $webauthnConfig['timeout'];
-        $optionsArray['userVerification'] = $webauthnConfig['user_verification'];
+        // Add settings to support hardware keys
+        $optionsArray['timeout'] = 60000; // 60 seconds
+        $optionsArray['userVerification'] = 'preferred'; // Allow but don't require user verification
         
         // Note: allowCredentials is handled by the WebAuthn library based on stored credentials
         // The library will automatically include all registered credentials for any user
