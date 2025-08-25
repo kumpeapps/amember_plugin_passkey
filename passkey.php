@@ -121,6 +121,154 @@ class Am_Plugin_Passkey extends Am_Plugin
         
         // Ensure database table exists
         $this->ensureTableAndColumns();
+        
+        // Ensure Composer dependencies are installed
+        $this->ensureComposerDependencies();
+    }
+    
+    /**
+     * Ensure Composer dependencies are installed automatically
+     */
+    protected function ensureComposerDependencies()
+    {
+        $pluginDir = __DIR__;
+        $composerJsonPath = $pluginDir . '/composer.json';
+        $vendorPath = $pluginDir . '/vendor';
+        $autoloadPath = $vendorPath . '/autoload.php';
+        
+        // Check if dependencies are already installed
+        if (file_exists($autoloadPath) && file_exists($vendorPath . '/web-auth/webauthn-lib')) {
+            return; // Dependencies already installed
+        }
+        
+        // Check if composer.json exists, create if needed
+        if (!file_exists($composerJsonPath)) {
+            $this->createComposerJson($composerJsonPath);
+        }
+        
+        // Try to run composer install
+        $this->runComposerInstall($pluginDir);
+    }
+    
+    /**
+     * Create composer.json file if it doesn't exist
+     */
+    private function createComposerJson($composerJsonPath)
+    {
+        $composerConfig = [
+            'name' => 'kumpeapps/amember-passkey-plugin',
+            'description' => 'Passkey authentication plugin for aMember Pro',
+            'type' => 'library',
+            'require' => [
+                'php' => '>=7.4',
+                'web-auth/webauthn-lib' => '^5.2'
+            ],
+            'config' => [
+                'optimize-autoloader' => true,
+                'prefer-stable' => true
+            ],
+            'minimum-stability' => 'stable'
+        ];
+        
+        $json = json_encode($composerConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (file_put_contents($composerJsonPath, $json) === false) {
+            error_log('Passkey Plugin: Failed to create composer.json at ' . $composerJsonPath);
+        } else {
+            error_log('Passkey Plugin: Created composer.json at ' . $composerJsonPath);
+        }
+    }
+    
+    /**
+     * Attempt to run composer install
+     */
+    private function runComposerInstall($pluginDir)
+    {
+        // Check if we can find composer executable
+        $composerPaths = [
+            'composer',           // Global composer
+            '/usr/local/bin/composer',
+            '/usr/bin/composer',
+            'composer.phar'       // Local composer.phar
+        ];
+        
+        $composerCmd = null;
+        foreach ($composerPaths as $path) {
+            if ($this->isExecutableAvailable($path)) {
+                $composerCmd = $path;
+                break;
+            }
+        }
+        
+        if (!$composerCmd) {
+            error_log('Passkey Plugin: Composer executable not found. Please install Composer or run "composer install" manually in: ' . $pluginDir);
+            return false;
+        }
+        
+        // Change to plugin directory and run composer install
+        $oldCwd = getcwd();
+        if (chdir($pluginDir)) {
+            $command = $composerCmd . ' install --no-dev --optimize-autoloader 2>&1';
+            error_log('Passkey Plugin: Running composer install in ' . $pluginDir);
+            
+            $output = [];
+            $returnCode = 0;
+            exec($command, $output, $returnCode);
+            
+            chdir($oldCwd); // Restore original directory
+            
+            if ($returnCode === 0) {
+                error_log('Passkey Plugin: Composer install completed successfully');
+                // Optionally add admin notification
+                if (function_exists('am_add_admin_message')) {
+                    am_add_admin_message('Passkey Plugin: WebAuthn dependencies installed automatically via Composer.', 'success');
+                }
+                return true;
+            } else {
+                error_log('Passkey Plugin: Composer install failed with code ' . $returnCode . ': ' . implode("\n", $output));
+                // Add admin notification about manual installation needed
+                if (function_exists('am_add_admin_message')) {
+                    am_add_admin_message('Passkey Plugin: Please run "composer install" manually in the plugin directory: ' . $pluginDir, 'error');
+                }
+                return false;
+            }
+        } else {
+            error_log('Passkey Plugin: Failed to change to plugin directory: ' . $pluginDir);
+            chdir($oldCwd);
+            return false;
+        }
+    }
+    
+    /**
+     * Check if an executable is available
+     */
+    private function isExecutableAvailable($command)
+    {
+        $output = [];
+        $returnCode = 0;
+        exec('which ' . escapeshellarg($command) . ' 2>/dev/null', $output, $returnCode);
+        return $returnCode === 0;
+    }
+    
+    /**
+     * Get the path to Composer autoloader
+     * Prioritizes plugin's own vendor directory
+     */
+    private function getAutoloadPath()
+    {
+        $possiblePaths = [
+            __DIR__ . '/vendor/autoload.php',                 // Plugin's own vendor directory (preferred)
+            __DIR__ . '/../../../../../vendor/autoload.php',  // Project root
+            __DIR__ . '/../../../../vendor/autoload.php',     // Alternative project structure
+            __DIR__ . '/../../../vendor/autoload.php'         // Alternative structure
+        ];
+        
+        foreach ($possiblePaths as $path) {
+            if (file_exists($path)) {
+                return $path;
+            }
+        }
+        
+        return null;
     }
     
     protected function ensureTableAndColumns()
@@ -2375,27 +2523,16 @@ window.safeWebAuthnGet = async function(options) {
         
         error_log('Passkey Plugin: Processing passkey action: ' . $action);
         
-        // Try to load Composer autoload - be defensive about the path
-        $possiblePaths = array(
-            __DIR__ . '/../../../../../vendor/autoload.php',
-            __DIR__ . '/../../../../vendor/autoload.php',
-            __DIR__ . '/../../../vendor/autoload.php'
-        );
+        // Try to load Composer autoload - prioritize plugin's own vendor directory
+        $autoloadPath = $this->getAutoloadPath();
         
-        $autoloadFound = false;
-        foreach ($possiblePaths as $autoloadPath) {
-            if (file_exists($autoloadPath)) {
-                require_once $autoloadPath;
-                $autoloadFound = true;
-                error_log('Passkey Plugin: Loaded autoload from: ' . $autoloadPath);
-                break;
-            }
-        }
-        
-        if (!$autoloadFound) {
-            error_log('Passkey plugin error: vendor/autoload.php not found. Run composer install.');
+        if ($autoloadPath) {
+            require_once $autoloadPath;
+            error_log('Passkey Plugin: Loaded autoload from: ' . $autoloadPath);
+        } else {
+            error_log('Passkey plugin error: vendor/autoload.php not found. Please run composer install in the plugin directory.');
             if (php_sapi_name() !== 'cli') {
-                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'vendor/autoload.php not found. Run composer install.'));
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Dependencies not installed. Please run composer install in the plugin directory.'));
             }
             return;
         }
@@ -2557,9 +2694,10 @@ window.safeWebAuthnGet = async function(options) {
         // Composer Dependencies
         $html .= '<div class="section">';
         $vendorPaths = [
-            __DIR__ . '/../../../../../vendor/autoload.php',
-            __DIR__ . '/../../../../vendor/autoload.php',
-            __DIR__ . '/../../../vendor/autoload.php'
+            __DIR__ . '/vendor/autoload.php',                 // Plugin's own vendor directory (preferred)
+            __DIR__ . '/../../../../../vendor/autoload.php',  // Project root
+            __DIR__ . '/../../../../vendor/autoload.php',     // Alternative project structure
+            __DIR__ . '/../../../vendor/autoload.php'         // Alternative structure
         ];
         
         $composerFound = false;
@@ -2580,9 +2718,18 @@ window.safeWebAuthnGet = async function(options) {
             $html .= '<h2>📦 Composer Dependencies</h2>
                 <p>Autoload found: <strong>' . $composerPath . '</strong></p>
                 <p>WebAuthn library: <strong>' . ($webauthnAvailable ? 'AVAILABLE' : 'NOT FOUND') . '</strong></p>';
+                
+            // Show information about automatic dependency management
+            if (strpos($composerPath, '/vendor/autoload.php') !== false && strpos($composerPath, __DIR__ . '/vendor') === 0) {
+                $html .= '<p style="color: green;">✅ Using plugin\'s own vendor directory (automatic dependency management)</p>';
+            } else {
+                $html .= '<p style="color: orange;">⚠️ Using external vendor directory</p>';
+            }
         } else {
             $html .= '<h2 class="error">❌ Composer Dependencies</h2>
                 <p>Autoload: <strong>NOT FOUND</strong></p>
+                <p style="color: red;">The plugin will attempt to automatically install dependencies via Composer on first use.</p>
+                <p>If automatic installation fails, run manually: <code>composer install</code> in the plugin directory.</p>
                 <p>Tried paths:</p><ul>';
             foreach ($vendorPaths as $path) {
                 $html .= '<li>' . htmlspecialchars($path) . '</li>';
