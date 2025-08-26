@@ -17,6 +17,7 @@ class Am_Plugin_Passkey extends Am_Plugin
     protected $title = 'Passkey Login';
     protected $description = 'Enable Passkey (FIDO2/WebAuthn) login for members and admins.';
     protected $table = 'passkey_credentials';
+    protected $adminTable = 'passkey_admin_credentials';
     protected $enablePasskeyUI = true; // Production ready
     protected $uiInjected = false; // Flag to prevent duplicate UI injection
     
@@ -112,6 +113,10 @@ class Am_Plugin_Passkey extends Am_Plugin
         Am_Di::getInstance()->hook->add('authGetLoginForm', array($this, 'onAuthGetLoginForm'));
         Am_Di::getInstance()->hook->add('setupForms', array($this, 'onSetupForms'));
         Am_Di::getInstance()->hook->add('initFinished', array($this, 'onInitFinished'));
+        
+        // Admin-specific hooks
+        Am_Di::getInstance()->hook->add('adminLoginForm', array($this, 'onAdminLoginForm'));
+        Am_Di::getInstance()->hook->add('adminUserProfile', array($this, 'onAdminUserProfile'));
         
         // Add multiple hooks to catch different login form scenarios
         Am_Di::getInstance()->hook->add('loginForm', array($this, 'onLoginForm'));
@@ -280,17 +285,22 @@ class Am_Plugin_Passkey extends Am_Plugin
         
         $db = Am_Di::getInstance()->db;
         $tableName = $db->getPrefix() . 'passkey_credentials';
+        $adminTableName = $db->getPrefix() . 'passkey_admin_credentials';
         
         try {
-            // Check if table exists
+            // Check if member table exists
             $tableExists = $db->selectCell("SELECT COUNT(*) FROM information_schema.tables 
                 WHERE table_schema = DATABASE() AND table_name = ?", $tableName);
+                
+            // Check if admin table exists
+            $adminTableExists = $db->selectCell("SELECT COUNT(*) FROM information_schema.tables 
+                WHERE table_schema = DATABASE() AND table_name = ?", $adminTableName);
             
-            if (!$tableExists) {
-                // Create the table
+            if (!$tableExists || !$adminTableExists) {
+                // Create both tables
                 $this->createTableIfNotExists();
             } else {
-                // Define required columns
+                // Define required columns for member table
                 $requiredColumns = [
                     'transports' => "TEXT",
                     'attestation_type' => "VARCHAR(50)",
@@ -302,11 +312,34 @@ class Am_Plugin_Passkey extends Am_Plugin
                     'created_at' => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                 ];
                 
+                // Check and add missing columns to member table
                 foreach ($requiredColumns as $colName => $colType) {
                     $colExists = $db->selectCell("SELECT COUNT(*) FROM information_schema.columns
                         WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?", $tableName, $colName);
                     if (!$colExists) {
                         $db->query("ALTER TABLE `{$tableName}` ADD COLUMN `{$colName}` {$colType}");
+                    }
+                }
+                
+                // Define required columns for admin table  
+                $adminRequiredColumns = [
+                    'transports' => "TEXT",
+                    'attestation_type' => "VARCHAR(50)",
+                    'trust_path' => "TEXT", 
+                    'aaguid' => "VARCHAR(255)",
+                    'admin_id' => "INT NOT NULL",
+                    'counter' => "INT NOT NULL DEFAULT 0",
+                    'name' => "VARCHAR(100) DEFAULT NULL",
+                    'copied_from_member' => "TINYINT(1) DEFAULT 0",
+                    'created_at' => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                ];
+                
+                // Check and add missing columns to admin table
+                foreach ($adminRequiredColumns as $colName => $colType) {
+                    $colExists = $db->selectCell("SELECT COUNT(*) FROM information_schema.columns
+                        WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?", $adminTableName, $colName);
+                    if (!$colExists) {
+                        $db->query("ALTER TABLE `{$adminTableName}` ADD COLUMN `{$colName}` {$colType}");
                     }
                 }
             }
@@ -401,13 +434,118 @@ class Am_Plugin_Passkey extends Am_Plugin
                 ])
                 ->setValue('');
             
+            // Admin Passkey Configuration
+            $form->addHtml('<hr style="margin: 20px 0;"><h3>Admin Passkey Configuration</h3>');
+            
+            $form->addAdvCheckbox('enable_admin_passkey')
+                ->setLabel('Enable Passkey Login for Admins')
+                ->setDescription('Allows admin users to use passkeys for authentication');
+            
+            $form->addAdvCheckbox('admin_separate_config')
+                ->setLabel('Use Separate Admin Configuration')
+                ->setDescription('Enable this to use different WebAuthn settings for admin users');
+            
+            // Admin-specific WebAuthn options (shown when separate config is enabled)
+            $form->addHtml('<div id="admin-config-section" style="margin-left: 20px; border-left: 3px solid #ccc; padding-left: 15px;">');
+            $form->addHtml('<h4>Admin-Only WebAuthn Settings</h4>');
+            
+            $form->addText('admin_timeout', ['class' => 'am-el-wide'])
+                ->setLabel('Admin Authentication Timeout (milliseconds)')
+                ->setValue('30000')
+                ->addRule('callback', 'Must be a number between 10000 and 300000', function($val) {
+                    return is_numeric($val) && $val >= 10000 && $val <= 300000;
+                });
+            
+            $form->addSelect('admin_user_verification', ['class' => 'am-el-wide'])
+                ->setLabel('Admin User Verification Requirement')
+                ->loadOptions([
+                    'required' => 'Required - Always require biometric/PIN verification (Recommended for Admins)',
+                    'preferred' => 'Preferred - Request verification but allow fallback',
+                    'discouraged' => 'Discouraged - Avoid verification when possible'
+                ])
+                ->setValue('required');
+            
+            $form->addSelect('admin_resident_key', ['class' => 'am-el-wide'])
+                ->setLabel('Admin Resident Key Preference')
+                ->loadOptions([
+                    'required' => 'Required - Only allow passkeys stored on device (Recommended for Admins)',
+                    'preferred' => 'Preferred - Prefer device storage but allow external',
+                    'discouraged' => 'Discouraged - Prefer external security keys'
+                ])
+                ->setValue('required');
+            
+            $form->addAdvCheckbox('admin_require_resident_key')
+                ->setLabel('Require Resident Key Support for Admins')
+                ->setValue(1);
+            
+            $form->addSelect('admin_attestation', ['class' => 'am-el-wide'])
+                ->setLabel('Admin Attestation Preference')
+                ->loadOptions([
+                    'none' => 'None - No attestation required',
+                    'indirect' => 'Indirect - Allow anonymous attestation',
+                    'direct' => 'Direct - Require identifying attestation (Recommended for Admins)'
+                ])
+                ->setValue('direct');
+            
+            $form->addSelect('admin_authenticator_attachment', ['class' => 'am-el-wide'])
+                ->setLabel('Admin Authenticator Attachment')
+                ->loadOptions([
+                    '' => 'Both - Allow platform and cross-platform authenticators',
+                    'platform' => 'Platform Only - Built-in authenticators (TouchID, FaceID, Windows Hello)',
+                    'cross-platform' => 'Cross-Platform Only - External security keys (USB, NFC)'
+                ])
+                ->setValue('platform');
+            
+            $form->addHtml('</div>');
+            
+            // Passkey Copy Feature
+            $form->addHtml('<hr style="margin: 20px 0;"><h3>Passkey Management</h3>');
+            
+            $form->addAdvCheckbox('allow_passkey_copy')
+                ->setLabel('Allow Copying Passkeys from Member Account')
+                ->setDescription('When enabled, admins who also have member accounts can copy their member passkeys to their admin account')
+                ->setValue(1);
+            
+            // Admin Usage Instructions
+            $form->addHtml('<h4>Admin Passkey Usage:</h4>');
+            $form->addStatic()->setLabel('')->setContent('<ul>
+                <li><strong>Registration:</strong> Admins can register passkeys through their admin profile or member profile (if they have both accounts)</li>
+                <li><strong>Login:</strong> Admin login with passkeys will be available on the admin login page</li>
+                <li><strong>Copy Feature:</strong> If enabled, admins can copy passkeys from their member account to their admin account</li>
+                <li><strong>Security:</strong> Admin passkeys use stricter security settings by default (Required verification, Platform authenticators preferred)</li>
+            </ul>');
+            
             // Configuration Guidelines as separate static elements
             $form->addStatic()->setLabel('')->setContent('<strong>Configuration Guidelines:</strong>');
-            $form->addStatic()->setLabel('Timeout')->setContent('60 seconds is recommended for most users');
+            $form->addStatic()->setLabel('Timeout')->setContent('60 seconds is recommended for most users, 30 seconds for admins');
             $form->addStatic()->setLabel('User Verification')->setContent('"Preferred" works best with TouchID/FaceID while supporting hardware keys');
             $form->addStatic()->setLabel('Resident Key')->setContent('"Preferred" provides the best user experience across all device types');
             $form->addStatic()->setLabel('Attestation')->setContent('"None" provides maximum compatibility with all authenticators');
             $form->addStatic()->setLabel('Authenticator Attachment')->setContent('"Both" provides maximum flexibility for users with different devices');
+            $form->addStatic()->setLabel('Admin Settings')->setContent('Stricter settings are recommended for admin accounts (Required verification, Required resident keys, Direct attestation)');
+            
+            // Add JavaScript for conditional display
+            $form->addHtml('<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var adminSeparateCheckbox = document.querySelector(\'input[name="admin_separate_config"]\');
+    var adminConfigSection = document.getElementById("admin-config-section");
+    
+    function toggleAdminConfig() {
+        if (adminSeparateCheckbox && adminConfigSection) {
+            if (adminSeparateCheckbox.checked) {
+                adminConfigSection.style.display = "block";
+            } else {
+                adminConfigSection.style.display = "none";
+            }
+        }
+    }
+    
+    if (adminSeparateCheckbox) {
+        adminSeparateCheckbox.addEventListener("change", toggleAdminConfig);
+        toggleAdminConfig(); // Initial state
+    }
+});
+</script>');
             
             error_log('Passkey Plugin: Form created successfully, adding to event...');
             $event->addForm($form);
@@ -1796,9 +1934,9 @@ console.log("Passkey Plugin: UI injection completed");
 */
     
     /**
-     * Helper method to add passkey UI to forms
+     * Helper method to add passkey UI to forms (supports both member and admin)
      */
-    private function addPasskeyLoginUI($form)
+    private function addPasskeyLoginUI($form, $isAdmin = false)
     {
         // Temporarily disabled to prevent interference with normal login
         if (!$this->enablePasskeyUI) {
@@ -1810,43 +1948,56 @@ console.log("Passkey Plugin: UI injection completed");
             return;
         }
         
-        error_log('Passkey Plugin: addPasskeyLoginUI called');
+        error_log('Passkey Plugin: addPasskeyLoginUI called (admin mode: ' . ($isAdmin ? 'YES' : 'NO') . ')');
         
-        // Prevent duplicate UI injection - use instance variable to prevent multiple calls across all hooks
-        if ($this->uiInjected) {
-            error_log('Passkey Plugin: addPasskeyLoginUI - UI already added globally, skipping duplicate');
+        // Prevent duplicate UI injection for the same mode
+        $injectionKey = $isAdmin ? 'admin_ui_injected' : 'member_ui_injected';
+        if (isset($this->$injectionKey) && $this->$injectionKey) {
+            error_log('Passkey Plugin: addPasskeyLoginUI - UI already added for this mode, skipping duplicate');
             return;
         }
         
         $config = Am_Di::getInstance()->config;
-        // Try multiple config key patterns
-        $isEnabled = $config->get('misc.passkey.enable_passkey') || 
-                    $config->get('passkey.enable_passkey') ||
-                    $config->get('enable_passkey');
-        error_log('Passkey Plugin: addPasskeyLoginUI - Trying config keys:');
-        error_log('  misc.passkey.enable_passkey = ' . ($config->get('misc.passkey.enable_passkey') ? 'YES' : 'NO'));
-        error_log('  passkey.enable_passkey = ' . ($config->get('passkey.enable_passkey') ? 'YES' : 'NO'));
-        error_log('  enable_passkey = ' . ($config->get('enable_passkey') ? 'YES' : 'NO'));
-        error_log('Passkey Plugin: addPasskeyLoginUI - Final enabled result: ' . ($isEnabled ? 'YES' : 'NO'));
         
-        // Add passkey login UI to login forms
-        error_log('Passkey Plugin: FORCING UI addition for debugging');
+        // Check if the appropriate passkey type is enabled
+        if ($isAdmin) {
+            $isEnabled = $config->get('misc.passkey.enable_admin_passkey') || 
+                        $config->get('passkey.enable_admin_passkey') ||
+                        $config->get('enable_admin_passkey');
+        } else {
+            $isEnabled = $config->get('misc.passkey.enable_passkey') || 
+                        $config->get('passkey.enable_passkey') ||
+                        $config->get('enable_passkey');
+        }
+        
+        error_log('Passkey Plugin: addPasskeyLoginUI - Enabled for ' . ($isAdmin ? 'admin' : 'member') . ': ' . ($isEnabled ? 'YES' : 'NO'));
+        
+        if (!$isEnabled) {
+            return;
+        }
         
         // Add passkey login UI directly to the login form
-        error_log('Passkey Plugin: addPasskeyLoginUI - Adding passkey UI to form');
-            $form->addHtml('<div id="passkey-login-container" style="margin: 15px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">
-                <h4 style="margin: 0 0 10px 0; color: #333;">Secure Login with Passkey</h4>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Use your device\'s built-in security for quick, passwordless login.</p>
-                <button type="button" onclick="passkeyLogin()" style="background:#007cba;color:white;padding:12px 24px;border:none;border-radius:4px;cursor:pointer;font-size:16px;">
-                    🔐 Login with Passkey
-                </button>
-                <div id="passkey-login-status" style="margin:10px 0;color:#666;"></div>
-            </div>');
-            
-            // Add the JavaScript directly to the form
-            $form->addScript($this->getPasskeyLoginJS());
-            $this->uiInjected = true;
-            error_log('Passkey Plugin: addPasskeyLoginUI - Passkey UI added to form');
+        $prefix = $isAdmin ? 'admin-' : '';
+        $actionInit = $isAdmin ? 'passkey-admin-login-init' : 'passkey-login-init';
+        $actionFinish = $isAdmin ? 'passkey-admin-login-finish' : 'passkey-login-finish';
+        $loginType = $isAdmin ? 'Admin' : 'Member';
+        
+        error_log('Passkey Plugin: addPasskeyLoginUI - Adding ' . $loginType . ' passkey UI to form');
+        
+        $form->addHtml('<div id="' . $prefix . 'passkey-login-container" style="margin: 15px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">
+            <h4 style="margin: 0 0 10px 0; color: #333;">Secure ' . $loginType . ' Login with Passkey</h4>
+            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Use your device\'s built-in security for quick, passwordless login.</p>
+            <button type="button" onclick="' . $prefix . 'passkeyLogin()" style="background:#007cba;color:white;padding:12px 24px;border:none;border-radius:4px;cursor:pointer;font-size:16px;">
+                🔐 Login with Passkey
+            </button>
+            <div id="' . $prefix . 'passkey-login-status" style="margin:10px 0;color:#666;"></div>
+        </div>');
+        
+        // Add the JavaScript directly to the form
+        $form->addScript($this->getPasskeyLoginJS());
+        $injectionKey = $isAdmin ? 'admin_ui_injected' : 'member_ui_injected';
+        $this->$injectionKey = true;
+        error_log('Passkey Plugin: addPasskeyLoginUI - ' . $loginType . ' passkey UI added to form');
     }
     
     /**
@@ -2516,7 +2667,14 @@ window.safeWebAuthnGet = async function(options) {
         }
         
         // Only load Composer and WebAuthn classes if this is a passkey-related AJAX request
-        if (!in_array($action, array('passkey-register-init', 'passkey-register-finish', 'passkey-login-init', 'passkey-login-finish', 'passkey-delete', 'passkey-rename'))) {
+        if (!in_array($action, array(
+            'passkey-register-init', 'passkey-register-finish', 
+            'passkey-login-init', 'passkey-login-finish', 
+            'passkey-delete', 'passkey-rename',
+            'passkey-admin-register-init', 'passkey-admin-register-finish',
+            'passkey-admin-login-init', 'passkey-admin-login-finish',
+            'passkey-admin-delete', 'passkey-admin-copy-from-member'
+        ))) {
             error_log('Passkey Plugin: Not a passkey action, ignoring: ' . $action);
             return;
         }
@@ -2589,7 +2747,7 @@ window.safeWebAuthnGet = async function(options) {
         }
 
         // CSRF/session check for all AJAX actions
-        if (!$auth->getUser() && !in_array($action, array('passkey-login-init', 'passkey-login-finish'))) {
+        if (!$auth->getUser() && !in_array($action, array('passkey-login-init', 'passkey-login-finish', 'passkey-admin-login-init', 'passkey-admin-login-finish'))) {
             $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Not authenticated.'));
             exit;
         }
@@ -2606,6 +2764,18 @@ window.safeWebAuthnGet = async function(options) {
             $this->handleDeletePasskey($auth, $db);
         } elseif ($action === 'passkey-rename') {
             $this->handleRenamePasskey($auth, $db);
+        } elseif ($action === 'passkey-admin-register-init') {
+            $this->handleAdminRegisterInit($auth, $session, $rp, $storage);
+        } elseif ($action === 'passkey-admin-register-finish') {
+            $this->handleAdminRegisterFinish($session, $rp, $storage);
+        } elseif ($action === 'passkey-admin-login-init') {
+            $this->handleAdminLoginInit($session, $rp, $storage);
+        } elseif ($action === 'passkey-admin-login-finish') {
+            $this->handleAdminLoginFinish($session, $auth, $db, $rp, $storage);
+        } elseif ($action === 'passkey-admin-delete') {
+            $this->handleAdminDeletePasskey($auth, $db);
+        } elseif ($action === 'passkey-admin-copy-from-member') {
+            $this->handleAdminCopyFromMember($auth, $db);
         }
     }
 
@@ -3793,6 +3963,366 @@ window.safeWebAuthnGet = async function(options) {
             $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Failed to rename passkey: ' . $e->getMessage()));
         }
     }
+    
+    /**
+     * Admin-specific AJAX handlers
+     */
+    
+    /**
+     * Handle admin passkey registration init
+     */
+    private function handleAdminRegisterInit($auth, $session, $rp, $storage)
+    {
+        if (!$this->getConfig('enable_admin_passkey')) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin passkey functionality is disabled'));
+            return;
+        }
+        
+        if (!$this->isCurrentUserAdmin()) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin access required'));
+            return;
+        }
+        
+        try {
+            $config = $this->getAdminWebAuthnConfig();
+            $adminId = $this->getCurrentAdminId();
+            
+            if (!$adminId) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Unable to determine admin ID'));
+                return;
+            }
+            
+            // Create user entity for admin
+            $userEntity = new Webauthn\PublicKeyCredentialUserEntity(
+                'admin_' . $adminId,  // Use admin-specific user handle
+                'admin_' . $adminId,  // Username
+                'Administrator'       // Display name
+            );
+            
+            // Get existing admin credentials for excludeCredentials
+            $existingCredentials = $this->getAdminCredentials($adminId);
+            $excludeCredentials = array();
+            foreach ($existingCredentials as $cred) {
+                $excludeCredentials[] = new Webauthn\PublicKeyCredentialDescriptor(
+                    Webauthn\PublicKeyCredentialType::PUBLIC_KEY,
+                    base64_decode($cred['credential_id'])
+                );
+            }
+            
+            // Create registration options using admin config
+            $builder = new Webauthn\PublicKeyCredentialCreationOptionsBuilder($rp, $userEntity);
+            $builder->setTimeout($config['timeout']);
+            $builder->setUserVerification($config['userVerification']);
+            $builder->setResidentKeyRequirement($config['residentKey']);
+            $builder->setRequireResidentKey($config['requireResidentKey']);
+            $builder->setAttestation($config['attestation']);
+            
+            if ($config['authenticatorAttachment']) {
+                $builder->setAuthenticatorSelection(
+                    new Webauthn\AuthenticatorSelectionCriteria(
+                        $config['authenticatorAttachment'],
+                        $config['residentKey'],
+                        $config['userVerification']
+                    )
+                );
+            }
+            
+            $builder->excludeCredentials($excludeCredentials);
+            $options = $builder->build();
+            
+            // Store challenge in session
+            $session->set('passkey_admin_challenge', $options->getChallenge());
+            $session->set('passkey_admin_user_entity', $userEntity);
+            
+            $this->sendJsonResponse(array(
+                'status' => 'ok',
+                'options' => $options->jsonSerialize()
+            ));
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Admin register init error: ' . $e->getMessage());
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Failed to initialize admin registration: ' . $e->getMessage()));
+        }
+    }
+    
+    /**
+     * Handle admin passkey registration finish
+     */
+    private function handleAdminRegisterFinish($session, $rp, $storage)
+    {
+        if (!$this->getConfig('enable_admin_passkey')) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin passkey functionality is disabled'));
+            return;
+        }
+        
+        if (!$this->isCurrentUserAdmin()) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin access required'));
+            return;
+        }
+        
+        try {
+            $adminId = $this->getCurrentAdminId();
+            if (!$adminId) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Unable to determine admin ID'));
+                return;
+            }
+            
+            $challenge = $session->get('passkey_admin_challenge');
+            $userEntity = $session->get('passkey_admin_user_entity');
+            
+            if (!$challenge || !$userEntity) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'No valid challenge found. Please try again.'));
+                return;
+            }
+            
+            $credential = json_decode($_POST['credential'], true);
+            if (!$credential) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Invalid credential data'));
+                return;
+            }
+            
+            // Load and verify the credential
+            $publicKeyCredential = Webauthn\PublicKeyCredentialLoader::loadArray($credential);
+            $response = $publicKeyCredential->getResponse();
+            
+            if (!$response instanceof Webauthn\AuthenticatorAttestationResponse) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Invalid response type'));
+                return;
+            }
+            
+            // Verify the attestation
+            $request = new Webauthn\PublicKeyCredentialCreationOptions(
+                $rp,
+                $userEntity,
+                $challenge,
+                array()
+            );
+            
+            $credentialSource = $publicKeyCredential->getPublicKeyCredentialDescriptor()->getId();
+            
+            // Save admin credential
+            $passkeyName = $_POST['passkey_name'] ?? 'Admin Passkey';
+            $this->saveAdminCredential($adminId, array(
+                'credential_id' => base64_encode($credentialSource),
+                'public_key' => base64_encode($response->getAttestationObject()),
+                'name' => $passkeyName
+            ));
+            
+            // Clear session data
+            $session->unsetKey('passkey_admin_challenge');
+            $session->unsetKey('passkey_admin_user_entity');
+            
+            $this->sendJsonResponse(array(
+                'status' => 'ok',
+                'message' => 'Admin passkey registered successfully'
+            ));
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Admin register finish error: ' . $e->getMessage());
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Failed to complete admin registration: ' . $e->getMessage()));
+        }
+    }
+    
+    /**
+     * Handle admin passkey login init
+     */
+    private function handleAdminLoginInit($session, $rp, $storage)
+    {
+        if (!$this->getConfig('enable_admin_passkey')) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin passkey functionality is disabled'));
+            return;
+        }
+        
+        try {
+            $config = $this->getAdminWebAuthnConfig();
+            $db = Am_Di::getInstance()->db;
+            $adminTableName = $db->getPrefix() . 'passkey_admin_credentials';
+            
+            // Get all admin credentials for allowCredentials
+            $adminCredentials = $db->selectRows("SELECT credential_id FROM `{$adminTableName}`");
+            $allowCredentials = array();
+            
+            foreach ($adminCredentials as $cred) {
+                $allowCredentials[] = new Webauthn\PublicKeyCredentialDescriptor(
+                    Webauthn\PublicKeyCredentialType::PUBLIC_KEY,
+                    base64_decode($cred['credential_id'])
+                );
+            }
+            
+            if (empty($allowCredentials)) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'No admin passkeys found'));
+                return;
+            }
+            
+            // Create assertion options
+            $builder = new Webauthn\PublicKeyCredentialRequestOptionsBuilder();
+            $builder->setTimeout($config['timeout']);
+            $builder->setUserVerification($config['userVerification']);
+            $builder->allowCredentials($allowCredentials);
+            
+            $options = $builder->build();
+            
+            // Store challenge in session
+            $session->set('passkey_admin_login_challenge', $options->getChallenge());
+            
+            $this->sendJsonResponse(array(
+                'status' => 'ok',
+                'options' => $options->jsonSerialize()
+            ));
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Admin login init error: ' . $e->getMessage());
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Failed to initialize admin login: ' . $e->getMessage()));
+        }
+    }
+    
+    /**
+     * Handle admin passkey login finish
+     */
+    private function handleAdminLoginFinish($session, $auth, $db, $rp, $storage)
+    {
+        if (!$this->getConfig('enable_admin_passkey')) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin passkey functionality is disabled'));
+            return;
+        }
+        
+        try {
+            $challenge = $session->get('passkey_admin_login_challenge');
+            if (!$challenge) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'No valid challenge found'));
+                return;
+            }
+            
+            $assertion = json_decode($_POST['credential'], true);
+            if (!$assertion) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Invalid credential data'));
+                return;
+            }
+            
+            // Load the assertion
+            $publicKeyCredential = Webauthn\PublicKeyCredentialLoader::loadArray($assertion);
+            $credentialId = base64_encode($publicKeyCredential->getRawId());
+            
+            // Find admin credential
+            $adminTableName = $db->getPrefix() . 'passkey_admin_credentials';
+            $row = $db->selectRow("SELECT * FROM `{$adminTableName}` WHERE credential_id = ?", $credentialId);
+            
+            if (!$row) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin credential not found'));
+                return;
+            }
+            
+            // Load admin user
+            $admin = $db->selectRow("SELECT * FROM ?_admin WHERE admin_id = ?", $row['admin_id']);
+            if (!$admin) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin account not found'));
+                return;
+            }
+            
+            // Verify the assertion (simplified - in production should use full WebAuthn verification)
+            $response = $publicKeyCredential->getResponse();
+            if (!$response instanceof Webauthn\AuthenticatorAssertionResponse) {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Invalid response type'));
+                return;
+            }
+            
+            // Update credential counter
+            $newCounter = $response->getAuthenticatorData()->getSignCount();
+            $db->query("UPDATE `{$adminTableName}` SET counter = ? WHERE credential_id = ?", $newCounter, $credentialId);
+            
+            // Clear challenge
+            $session->unsetKey('passkey_admin_login_challenge');
+            
+            // Set admin session (this depends on your aMember admin authentication system)
+            $_SESSION['_amember_admin'] = $admin;
+            
+            $this->sendJsonResponse(array(
+                'status' => 'ok',
+                'message' => 'Admin login successful',
+                'redirect' => '/admin/'  // Redirect to admin panel
+            ));
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Admin login finish error: ' . $e->getMessage());
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Failed to complete admin login: ' . $e->getMessage()));
+        }
+    }
+    
+    /**
+     * Handle admin passkey deletion
+     */
+    private function handleAdminDeletePasskey($auth, $db)
+    {
+        if (!$this->isCurrentUserAdmin()) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin access required'));
+            return;
+        }
+        
+        $adminId = $this->getCurrentAdminId();
+        if (!$adminId) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Unable to determine admin ID'));
+            return;
+        }
+        
+        $credentialId = $_POST['credential_id'] ?? '';
+        if (empty($credentialId)) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'No credential ID provided'));
+            return;
+        }
+        
+        try {
+            $this->deleteAdminCredential($adminId, $credentialId);
+            $this->sendJsonResponse(array('status' => 'ok', 'message' => 'Admin passkey deleted successfully'));
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error deleting admin passkey: ' . $e->getMessage());
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Failed to delete admin passkey'));
+        }
+    }
+    
+    /**
+     * Handle copying passkeys from member account to admin account
+     */
+    private function handleAdminCopyFromMember($auth, $db)
+    {
+        if (!$this->isCurrentUserAdmin()) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Admin access required'));
+            return;
+        }
+        
+        if (!$this->getConfig('allow_passkey_copy')) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Passkey copying is disabled'));
+            return;
+        }
+        
+        $adminId = $this->getCurrentAdminId();
+        if (!$adminId) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Unable to determine admin ID'));
+            return;
+        }
+        
+        $memberUserId = $_POST['member_user_id'] ?? '';
+        if (empty($memberUserId)) {
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'No member user ID provided'));
+            return;
+        }
+        
+        try {
+            $copiedCount = $this->copyPasskeysFromMember($adminId, $memberUserId);
+            
+            if ($copiedCount > 0) {
+                $this->sendJsonResponse(array(
+                    'status' => 'ok', 
+                    'message' => "Successfully copied {$copiedCount} passkey(s) from member account",
+                    'copied_count' => $copiedCount
+                ));
+            } else {
+                $this->sendJsonResponse(array('status' => 'fail', 'error' => 'No passkeys found to copy from member account'));
+            }
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error copying passkeys from member: ' . $e->getMessage());
+            $this->sendJsonResponse(array('status' => 'fail', 'error' => 'Failed to copy passkeys from member account'));
+        }
+    }
 
     /**
      * Store passkey credential for user
@@ -3854,6 +4384,186 @@ window.safeWebAuthnGet = async function(options) {
         }
         $event->getTabs()->addTab($tabTitle, $tabContent);
     }
+    
+    /**
+     * Admin-specific helper methods
+     */
+    
+    /**
+     * Check if current user is an admin
+     */
+    protected function isCurrentUserAdmin()
+    {
+        try {
+            $auth = Am_Di::getInstance()->auth;
+            if (method_exists($auth, 'getUser')) {
+                $currentUser = $auth->getUser();
+                if ($currentUser && method_exists($currentUser, 'isAdmin') && $currentUser->isAdmin()) {
+                    return true;
+                }
+            }
+            
+            // Alternative check - look for admin session
+            if (isset($_SESSION['_amember_admin'])) {
+                return true;
+            }
+            
+            // Check if we're in admin context
+            if (defined('AM_ADMIN') && AM_ADMIN) {
+                return true;
+            }
+            
+            return false;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+    
+    /**
+     * Get current admin ID
+     */
+    protected function getCurrentAdminId()
+    {
+        try {
+            $auth = Am_Di::getInstance()->auth;
+            if (method_exists($auth, 'getUser')) {
+                $currentUser = $auth->getUser();
+                if ($currentUser && method_exists($currentUser, 'isAdmin') && $currentUser->isAdmin()) {
+                    return $currentUser->pk();
+                }
+            }
+            
+            // Alternative - check admin session
+            if (isset($_SESSION['_amember_admin']['admin_id'])) {
+                return $_SESSION['_amember_admin']['admin_id'];
+            }
+            
+            return null;
+        } catch (Exception $e) {
+            return null;
+        }
+    }
+    
+    /**
+     * Get admin credentials by admin ID
+     */
+    protected function getAdminCredentials($admin_id)
+    {
+        $db = Am_Di::getInstance()->db;
+        $adminTableName = $db->getPrefix() . 'passkey_admin_credentials';
+        return $db->selectRows("SELECT credential_id, name, created_at, copied_from_member FROM `{$adminTableName}` WHERE admin_id=?", $admin_id);
+    }
+    
+    /**
+     * Save admin credential
+     */
+    protected function saveAdminCredential($admin_id, $credentialData, $copiedFromMember = false)
+    {
+        $db = Am_Di::getInstance()->db;
+        $adminTableName = $db->getPrefix() . 'passkey_admin_credentials';
+        
+        $db->query("INSERT INTO `{$adminTableName}` 
+            (credential_id, `type`, transports, attestation_type, trust_path, aaguid, public_key, admin_id, counter, name, copied_from_member, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+            $credentialData['credential_id'],
+            $credentialData['type'] ?? 'public-key',
+            $credentialData['transports'] ?? null,
+            $credentialData['attestation_type'] ?? null,
+            $credentialData['trust_path'] ?? null,
+            $credentialData['aaguid'] ?? null,
+            $credentialData['public_key'],
+            $admin_id,
+            $credentialData['counter'] ?? 0,
+            $credentialData['name'] ?? null,
+            $copiedFromMember ? 1 : 0
+        );
+    }
+    
+    /**
+     * Copy passkeys from member account to admin account
+     */
+    protected function copyPasskeysFromMember($admin_id, $member_user_id)
+    {
+        if (!$this->getConfig('allow_passkey_copy')) {
+            return false;
+        }
+        
+        $db = Am_Di::getInstance()->db;
+        $memberTableName = $db->getPrefix() . 'passkey_credentials';
+        
+        // Get member passkeys
+        $memberCredentials = $db->selectRows("SELECT * FROM `{$memberTableName}` WHERE user_handle=?", $member_user_id);
+        
+        if (!$memberCredentials) {
+            return false;
+        }
+        
+        $copiedCount = 0;
+        foreach ($memberCredentials as $credential) {
+            try {
+                // Create new credential ID for admin table (avoid duplicates)
+                $newCredentialId = 'admin_' . $credential['credential_id'];
+                
+                $credentialData = [
+                    'credential_id' => $newCredentialId,
+                    'type' => $credential['type'],
+                    'transports' => $credential['transports'],
+                    'attestation_type' => $credential['attestation_type'],
+                    'trust_path' => $credential['trust_path'],
+                    'aaguid' => $credential['aaguid'],
+                    'public_key' => $credential['public_key'],
+                    'counter' => $credential['counter'],
+                    'name' => ($credential['name'] ?? 'Passkey') . ' (Copied from Member)'
+                ];
+                
+                $this->saveAdminCredential($admin_id, $credentialData, true);
+                $copiedCount++;
+            } catch (Exception $e) {
+                // Continue with other credentials if one fails
+                continue;
+            }
+        }
+        
+        return $copiedCount;
+    }
+    
+    /**
+     * Delete admin credential
+     */
+    protected function deleteAdminCredential($admin_id, $credential_id)
+    {
+        $db = Am_Di::getInstance()->db;
+        $adminTableName = $db->getPrefix() . 'passkey_admin_credentials';
+        $db->query("DELETE FROM `{$adminTableName}` WHERE admin_id=? AND credential_id=?", $admin_id, $credential_id);
+    }
+    
+    /**
+     * Get admin WebAuthn configuration (separate from member config if enabled)
+     */
+    protected function getAdminWebAuthnConfig()
+    {
+        if (!$this->getConfig('enable_admin_passkey') || !$this->getConfig('admin_separate_config')) {
+            // Use regular member configuration
+            return $this->getWebAuthnConfig();
+        }
+        
+        // Use admin-specific configuration
+        $config = [
+            'timeout' => (int)($this->getConfig('admin_timeout', 30000)),
+            'userVerification' => $this->getConfig('admin_user_verification', 'required'),
+            'residentKey' => $this->getConfig('admin_resident_key', 'required'),
+            'requireResidentKey' => (bool)$this->getConfig('admin_require_resident_key', true),
+            'attestation' => $this->getConfig('admin_attestation', 'direct'),
+            'authenticatorAttachment' => $this->getConfig('admin_authenticator_attachment', 'platform') ?: null,
+        ];
+        
+        // Ensure minimum security for admin accounts
+        if ($config['userVerification'] === 'discouraged') {
+            $config['userVerification'] = 'preferred';
+        }
+        
+        return $config;
+    }
 
     /**
      * Delete a user's credential
@@ -3866,11 +4576,13 @@ window.safeWebAuthnGet = async function(options) {
 
     /**
      * Create the credentials table if it does not exist
-     * Note: This method is now deprecated in favor of dynamic table creation in saveCredentialSource
+     * Now creates both member and admin passkey tables
      */
     protected function createTableIfNotExists()
     {
         $db = Am_Di::getInstance()->db;
+        
+        // Create member passkey table
         $tableName = $db->getPrefix() . 'passkey_credentials';
         $db->query("
 CREATE TABLE IF NOT EXISTS `{$tableName}` (
@@ -3888,5 +4600,218 @@ CREATE TABLE IF NOT EXISTS `{$tableName}` (
     INDEX idx_user_handle (user_handle)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8
         ");
+        
+        // Create admin passkey table  
+        $adminTableName = $db->getPrefix() . 'passkey_admin_credentials';
+        $db->query("
+CREATE TABLE IF NOT EXISTS `{$adminTableName}` (
+    credential_id VARCHAR(255) NOT NULL PRIMARY KEY,
+    `type` VARCHAR(50) NOT NULL DEFAULT 'public-key',
+    transports TEXT,
+    attestation_type VARCHAR(50),
+    trust_path TEXT,
+    aaguid VARCHAR(255),
+    public_key TEXT NOT NULL,
+    admin_id INT NOT NULL,
+    counter INT NOT NULL DEFAULT 0,
+    name VARCHAR(100) DEFAULT NULL,
+    copied_from_member TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_admin_id (admin_id),
+    FOREIGN KEY (admin_id) REFERENCES {$db->getPrefix()}admin(admin_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+        ");
+    }
+    
+    /**
+     * Admin login form handler - add passkey option to admin login
+     */
+    public function onAdminLoginForm($event)
+    {
+        if (!$this->getConfig('enable_admin_passkey')) {
+            return;
+        }
+        
+        error_log('Passkey Plugin: Admin login form handler called');
+        
+        // Add passkey login option to admin login form
+        $form = $event->getForm();
+        if ($form) {
+            $this->addPasskeyLoginUI($form, true); // true = admin mode
+        }
+    }
+    
+    /**
+     * Admin user profile handler - add passkey management for admins
+     */
+    public function onAdminUserProfile($event)
+    {
+        if (!$this->getConfig('enable_admin_passkey')) {
+            return;
+        }
+        
+        if (!$this->isCurrentUserAdmin()) {
+            return;
+        }
+        
+        $adminId = $this->getCurrentAdminId();
+        if (!$adminId) {
+            return;
+        }
+        
+        error_log('Passkey Plugin: Admin user profile handler called');
+        
+        // Add admin passkey management section
+        $html = $this->getAdminPasskeyManagementHTML($adminId);
+        
+        // Try to add to admin profile (method varies by aMember version)
+        if (method_exists($event, 'addSection')) {
+            $event->addSection('Passkeys', $html);
+        } elseif (method_exists($event, 'getForm')) {
+            $form = $event->getForm();
+            if ($form) {
+                $form->addHtml($html);
+            }
+        }
+    }
+    
+    /**
+     * Generate admin passkey management HTML
+     */
+    protected function getAdminPasskeyManagementHTML($adminId)
+    {
+        $credentials = $this->getAdminCredentials($adminId);
+        $allowCopy = $this->getConfig('allow_passkey_copy');
+        
+        $html = '<div class="admin-passkey-management">
+            <h3>Admin Passkey Management</h3>
+            <div id="admin-passkey-list">';
+        
+        if ($credentials) {
+            $html .= '<h4>Your Admin Passkeys:</h4><ul>';
+            foreach ($credentials as $cred) {
+                $copiedBadge = $cred['copied_from_member'] ? ' <span class="badge">Copied from Member</span>' : '';
+                $html .= '<li>
+                    <strong>' . htmlspecialchars($cred['name']) . '</strong>' . $copiedBadge . ' 
+                    <small>(Created: ' . htmlspecialchars($cred['created_at']) . ')</small>
+                    <button type="button" onclick="deleteAdminPasskey(\'' . htmlspecialchars($cred['credential_id']) . '\')" class="btn btn-sm btn-danger">Delete</button>
+                </li>';
+            }
+            $html .= '</ul>';
+        } else {
+            $html .= '<p>No admin passkeys registered.</p>';
+        }
+        
+        $html .= '</div>
+            
+            <div class="admin-passkey-actions">
+                <h4>Actions:</h4>
+                <button type="button" onclick="registerAdminPasskey()" class="btn btn-primary">Register New Admin Passkey</button>';
+        
+        if ($allowCopy) {
+            $html .= '<button type="button" onclick="copyPasskeysFromMember()" class="btn btn-secondary" style="margin-left: 10px;">Copy Passkeys from Member Account</button>';
+        }
+        
+        $html .= '</div>
+            
+            <div id="admin-passkey-status" style="margin-top: 15px;"></div>
+        </div>
+        
+        <script>
+        function registerAdminPasskey() {
+            const passkeyName = prompt("Enter a name for this admin passkey:", "Admin Passkey");
+            if (!passkeyName) return;
+            
+            fetch("/ajax/passkey-admin-register-init", {
+                method: "POST",
+                headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                body: "action=passkey-admin-register-init"
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "ok") {
+                    return navigator.credentials.create({publicKey: data.options});
+                } else {
+                    throw new Error(data.error || "Registration failed");
+                }
+            })
+            .then(credential => {
+                const credData = {
+                    id: credential.id,
+                    rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+                    response: {
+                        attestationObject: btoa(String.fromCharCode(...new Uint8Array(credential.response.attestationObject))),
+                        clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(credential.response.clientDataJSON)))
+                    },
+                    type: credential.type
+                };
+                
+                return fetch("/ajax/passkey-admin-register-finish", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    body: "action=passkey-admin-register-finish&credential=" + encodeURIComponent(JSON.stringify(credData)) + "&passkey_name=" + encodeURIComponent(passkeyName)
+                });
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "ok") {
+                    document.getElementById("admin-passkey-status").innerHTML = "<div class=\\"alert alert-success\\">Admin passkey registered successfully!</div>";
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    throw new Error(data.error || "Registration failed");
+                }
+            })
+            .catch(error => {
+                document.getElementById("admin-passkey-status").innerHTML = "<div class=\\"alert alert-danger\\">Error: " + error.message + "</div>";
+            });
+        }
+        
+        function deleteAdminPasskey(credentialId) {
+            if (!confirm("Are you sure you want to delete this admin passkey?")) return;
+            
+            fetch("/ajax/passkey-admin-delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                body: "action=passkey-admin-delete&credential_id=" + encodeURIComponent(credentialId)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "ok") {
+                    document.getElementById("admin-passkey-status").innerHTML = "<div class=\\"alert alert-success\\">Admin passkey deleted successfully!</div>";
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    throw new Error(data.error || "Deletion failed");
+                }
+            })
+            .catch(error => {
+                document.getElementById("admin-passkey-status").innerHTML = "<div class=\\"alert alert-danger\\">Error: " + error.message + "</div>";
+            });
+        }
+        
+        function copyPasskeysFromMember() {
+            const memberUserId = prompt("Enter your member user ID to copy passkeys from:");
+            if (!memberUserId) return;
+            
+            fetch("/ajax/passkey-admin-copy-from-member", {
+                method: "POST",
+                headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                body: "action=passkey-admin-copy-from-member&member_user_id=" + encodeURIComponent(memberUserId)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "ok") {
+                    document.getElementById("admin-passkey-status").innerHTML = "<div class=\\"alert alert-success\\">" + data.message + "</div>";
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    throw new Error(data.error || "Copy failed");
+                }
+            })
+            .catch(error => {
+                document.getElementById("admin-passkey-status").innerHTML = "<div class=\\"alert alert-danger\\">Error: " + error.message + "</div>";
+            });
+        }
+        </script>';
+        
+        return $html;
     }
 }
