@@ -38,7 +38,7 @@ A modern, passwordless authentication plugin for aMember Pro that enables users 
 ## 🎯 Requirements
 
 - **aMember Pro** (any recent version)
-- **PHP 7.4+** 
+- **PHP 8.0+** 
 - **HTTPS enabled** (required for WebAuthn security)
 - **Modern browser** (Chrome 67+, Firefox 60+, Safari 14+, Edge 18+)
 
