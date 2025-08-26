@@ -11,6 +11,10 @@ A modern, passwordless authentication plugin for aMember Pro that enables users 
 - **📱 Cross-Platform Support** - Works on desktop, mobile, and all modern browsers
 - **⚙️ Admin Configuration** - Comprehensive settings for timeout, user verification, and authenticator preferences
 - **👤 User-Friendly Management** - Users can register multiple passkeys and manage them from their profile
+- **👑 Administrator Support** - Dedicated admin passkey functionality with enhanced security settings
+- **🔄 Passkey Copy Feature** - Admins can copy passkeys from their member accounts
+- **🗂️ Separate Admin Table** - Admin passkeys stored separately with stricter security policies
+- **🎛️ Dual Configuration** - Different WebAuthn settings for members vs administrators
 
 ## 🚀 Quick Installation
 
@@ -69,6 +73,53 @@ Navigate to **Configuration** → **Setup/Configuration** → **Passkey Login**:
 ---
 
 ## 👥 User Experience
+
+## 👑 Administrator Passkey Support
+
+This plugin provides comprehensive passkey support for aMember administrators with enhanced security features.
+
+### Admin Features
+
+- **🔒 Separate Admin Security** - Admin passkeys use stricter WebAuthn settings by default
+- **🗃️ Dedicated Database Table** - Admin passkeys stored in separate table (`passkey_admin_credentials`)
+- **⚙️ Configurable Security Levels** - Different settings for admin vs member accounts
+- **🔄 Passkey Copy Feature** - Copy existing passkeys from member account to admin account
+- **🎛️ Admin Profile Integration** - Full passkey management from admin interface
+
+### Admin Configuration Options
+
+In the plugin configuration, administrators can:
+
+- **Enable Admin Passkeys** - Toggle admin passkey functionality
+- **Separate Admin Configuration** - Use different WebAuthn settings for admins
+- **Enhanced Security Settings**:
+  - Timeout: 30 seconds (vs 60 for members) 
+  - User Verification: Required (vs Preferred for members)
+  - Resident Key: Required (vs Preferred for members)
+  - Attestation: Direct (vs None for members)
+  - Authenticator Attachment: Platform preferred (built-in biometrics)
+
+### Admin Usage
+
+#### Registration
+1. Enable admin passkeys in plugin configuration
+2. Admin users can register passkeys through:
+   - Admin profile interface
+   - Copy from existing member account (if enabled)
+
+#### Login
+1. Visit admin login page
+2. Click "Login with Passkey" button
+3. Use biometric authentication or security key
+4. Automatically redirected to admin dashboard
+
+#### Management
+- View all registered admin passkeys
+- Delete individual passkeys
+- Copy passkeys from member accounts
+- Rename passkeys for better organization
+
+## 👤 Member Passkey Usage
 
 ### For Users - Registration
 1. **Log in to member area**
