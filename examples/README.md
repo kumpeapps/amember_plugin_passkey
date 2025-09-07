@@ -1,34 +1,30 @@
 # Passkey Login Example
 
-This directory contains example implementations demonstrating how to integrate with the aMember Passkey Plugin API.
+This directory contains a complete example implementation demonstrating how to integrate with the aMember Passkey Plugin API.
 
 ## Files
 
-### `passkey_login_example.html`
+### `passkey_login_secure.html`
 
 A complete HTML page with JavaScript that demonstrates:
 
 - WebAuthn/FIDO2 passkey authentication
 - Integration with the secure API proxy
+- Automatic configuration loading from aMember API (`/api/passkey/config`)
 - Proper credential formatting and API communication
 - User-friendly interface with status messages
+- Secure server-side API key handling
 
-### `api_proxy.php`
+### `secure_passkey_auth.php`
 
 A secure PHP proxy script that:
 
 - Handles API key authentication with aMember
-- Forwards passkey verification requests
+- Automatically retrieves passkey configuration from aMember API
+- Forwards passkey verification requests to aMember
 - Provides CORS support for frontend integration
 - Includes proper error handling and security measures
-
-### test_api_proxy.html
-
-Simple test to verify the API proxy is accessible and responds correctly.
-
-### test_direct_plugin.html
-
-Direct test of aMember endpoints without the proxy - useful for debugging plugin integration.
+- Keeps API keys secure on the server (never exposed to client)
 
 ## Setup Instructions
 
