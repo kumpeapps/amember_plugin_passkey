@@ -202,13 +202,32 @@ class Am_Plugin_Passkey extends Am_Plugin
                 return false;
             }
             
-            // Check permissions (stored in 'perms' column)
-            $permissions = explode(',', $row['perms']);
-            $hasPermission = in_array($permission, $permissions);
+            // Check permissions (stored in 'perms' column as JSON)
+            $permissionsData = json_decode($row['perms'], true);
+            $hasPermission = false;
             
             error_log('Passkey Plugin: checkApiPermission - Required permission: ' . $permission);
-            error_log('Passkey Plugin: checkApiPermission - Available permissions: ' . implode(', ', $permissions));
-            error_log('Passkey Plugin: checkApiPermission - Has required permission: ' . ($hasPermission ? 'YES' : 'NO'));
+            error_log('Passkey Plugin: checkApiPermission - Permissions data structure: ' . json_encode($permissionsData));
+            
+            // Check if permission exists in the nested structure
+            if (is_array($permissionsData)) {
+                // Look for the permission in check-access section
+                if (isset($permissionsData['check-access']) && isset($permissionsData['check-access'][$permission])) {
+                    $hasPermission = (bool)$permissionsData['check-access'][$permission];
+                    error_log('Passkey Plugin: checkApiPermission - Found permission in check-access section: ' . ($hasPermission ? 'YES' : 'NO'));
+                } else {
+                    // Also check if it's directly in the permissions (alternative format)
+                    $hasPermission = isset($permissionsData[$permission]) && (bool)$permissionsData[$permission];
+                    error_log('Passkey Plugin: checkApiPermission - Found permission directly: ' . ($hasPermission ? 'YES' : 'NO'));
+                }
+            } else {
+                // Fallback: try comma-separated format
+                $permissions = explode(',', $row['perms']);
+                $hasPermission = in_array($permission, $permissions);
+                error_log('Passkey Plugin: checkApiPermission - Using fallback comma-separated format: ' . ($hasPermission ? 'YES' : 'NO'));
+            }
+            
+            error_log('Passkey Plugin: checkApiPermission - Final result: ' . ($hasPermission ? 'YES' : 'NO'));
             
             return $hasPermission;
             
