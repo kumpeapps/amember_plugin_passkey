@@ -244,3 +244,4 @@ pip-selfcheck.json
 facebook/
 vendor/
 two-factor-hotp/
+composer.*
