@@ -81,6 +81,10 @@ class Am_Plugin_Passkey extends Am_Plugin
         
         // Register REST API controller for check-access
         Am_Di::getInstance()->hook->add('initFinished', array($this, 'registerApiController'));
+        
+        // Register configuration save hook to update well-known file
+        Am_Di::getInstance()->hook->add('configSave', array($this, 'onConfigSave'));
+        Am_Di::getInstance()->hook->add('setupFormsSave', array($this, 'onSetupFormsSave'));
     }
     
     /**
@@ -113,6 +117,24 @@ class Am_Plugin_Passkey extends Am_Plugin
         } catch (Exception $e) {
             error_log('Passkey Plugin: Error registering API controller: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Handle configuration save events to update well-known file
+     */
+    public function onConfigSave($event)
+    {
+        error_log('Passkey Plugin: onConfigSave called - updating well-known file');
+        $this->updateWellKnownFile();
+    }
+
+    /**
+     * Handle setup forms save events to update well-known file
+     */
+    public function onSetupFormsSave($event)
+    {
+        error_log('Passkey Plugin: onSetupFormsSave called - updating well-known file');
+        $this->updateWellKnownFile();
     }
     
     /**
@@ -548,6 +570,12 @@ class Am_Plugin_Passkey extends Am_Plugin
             }
             
             error_log("Passkey Plugin: Related origins config key used: " . ($usedKey ?: 'none found') . ", value: " . $relatedOriginsConfig);
+            
+            // Force trigger well-known file update if we found a config
+            if ($usedKey && !empty($relatedOriginsConfig) && $relatedOriginsConfig !== '[]') {
+                // Update well-known file each time we read the config (ensures it's always current)
+                $this->updateWellKnownFile();
+            }
             
             $relatedOrigins = json_decode($relatedOriginsConfig, true);
             
