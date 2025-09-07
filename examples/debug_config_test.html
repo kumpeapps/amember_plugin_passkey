@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Passkey Configuration</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 20px auto; padding: 20px; }
+        .debug-section { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin: 15px 0; }
+        .debug-title { font-weight: bold; color: #495057; margin-bottom: 10px; }
+        pre { background: #fff; border: 1px solid #dee2e6; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        .button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .button:hover { background: #0056b3; }
+        .error { color: #dc3545; }
+        .success { color: #28a745; }
+        .warning { color: #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Passkey Configuration Debug</h1>
+    
+    <div class="debug-section">
+        <div class="debug-title">Step 1: Test Debug Proxy</div>
+        <button class="button" onclick="testDebugProxy()">Test Debug Proxy</button>
+        <div id="debug-results"></div>
+    </div>
+    
+    <div class="debug-section">
+        <div class="debug-title">Step 2: Test Secure Proxy</div>
+        <button class="button" onclick="testSecureProxy()">Test Secure Proxy</button>
+        <div id="secure-results"></div>
+    </div>
+    
+    <div class="debug-section">
+        <div class="debug-title">Step 3: Direct aMember Test</div>
+        <input type="text" id="amemberUrl" placeholder="aMember URL" style="width: 300px; padding: 5px; margin: 5px;">
+        <input type="text" id="apiKey" placeholder="API Key" style="width: 200px; padding: 5px; margin: 5px;">
+        <button class="button" onclick="testDirectAmember()">Test Direct</button>
+        <div id="direct-results"></div>
+    </div>
+    
+    <div class="debug-section">
+        <div class="debug-title">Instructions</div>
+        <ol>
+            <li>First, test the debug proxy to see configuration issues</li>
+            <li>Fix any configuration problems (config.php file, API key, etc.)</li>
+            <li>Test the secure proxy once configuration is working</li>
+            <li>Optionally test direct aMember endpoint</li>
+        </ol>
+        
+        <div style="margin-top: 15px;">
+            <strong>Common Issues:</strong>
+            <ul>
+                <li>Missing config.php file</li>
+                <li>API key not set or still has placeholder value</li>
+                <li>aMember URL incorrect</li>
+                <li>API key lacks "by-login-pass" permission</li>
+                <li>Passkey plugin not enabled in aMember</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        async function testDebugProxy() {
+            const resultDiv = document.getElementById('debug-results');
+            resultDiv.innerHTML = '<p>Testing debug proxy...</p>';
+            
+            try {
+                const response = await fetch('./debug_proxy.php?action=config');
+                const text = await response.text();
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    resultDiv.innerHTML = `<div class="error">Invalid JSON response:</div><pre>${text}</pre>`;
+                    return;
+                }
+                
+                resultDiv.innerHTML = `<div class="debug-title">Debug Results:</div><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                
+                // Add analysis
+                let analysis = '<div class="debug-title">Analysis:</div><ul>';
+                if (!data.config_file_exists) {
+                    analysis += '<li class="error">❌ Config file missing - create config.php from config.example.php</li>';
+                } else {
+                    analysis += '<li class="success">✅ Config file exists</li>';
+                }
+                
+                if (data.api_key_set === false) {
+                    analysis += '<li class="error">❌ API key not set or still has placeholder value</li>';
+                } else if (data.api_key_set === true) {
+                    analysis += '<li class="success">✅ API key appears to be set</li>';
+                }
+                
+                if (data.api_response_received === false) {
+                    analysis += '<li class="error">❌ Failed to connect to aMember API</li>';
+                } else if (data.api_response_received === true) {
+                    analysis += '<li class="success">✅ Successfully connected to aMember API</li>';
+                }
+                
+                if (data.api_response_valid_json === false) {
+                    analysis += '<li class="warning">⚠️ API returned invalid JSON - check API endpoint</li>';
+                } else if (data.api_response_valid_json === true) {
+                    analysis += '<li class="success">✅ API returned valid JSON</li>';
+                }
+                
+                analysis += '</ul>';
+                resultDiv.innerHTML += analysis;
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function testSecureProxy() {
+            const resultDiv = document.getElementById('secure-results');
+            resultDiv.innerHTML = '<p>Testing secure proxy...</p>';
+            
+            try {
+                const response = await fetch('./secure_passkey_auth.php?action=config');
+                const text = await response.text();
+                
+                resultDiv.innerHTML = `<div class="debug-title">Secure Proxy Response:</div><pre>${text}</pre>`;
+                
+                if (response.ok) {
+                    try {
+                        const data = JSON.parse(text);
+                        if (data.ok) {
+                            resultDiv.innerHTML += '<div class="success">✅ Secure proxy working correctly!</div>';
+                        } else {
+                            resultDiv.innerHTML += `<div class="error">❌ Secure proxy error: ${data.error}</div>`;
+                        }
+                    } catch (e) {
+                        resultDiv.innerHTML += '<div class="error">❌ Invalid JSON response</div>';
+                    }
+                } else {
+                    resultDiv.innerHTML += `<div class="error">❌ HTTP ${response.status}: ${response.statusText}</div>`;
+                }
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function testDirectAmember() {
+            const resultDiv = document.getElementById('direct-results');
+            const amemberUrl = document.getElementById('amemberUrl').value;
+            const apiKey = document.getElementById('apiKey').value;
+            
+            if (!amemberUrl || !apiKey) {
+                resultDiv.innerHTML = '<div class="error">Please enter both aMember URL and API Key</div>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<p>Testing direct aMember connection...</p>';
+            
+            try {
+                const response = await fetch(`${amemberUrl}/api/passkey/config`, {
+                    headers: {
+                        'X-API-Key': apiKey
+                    }
+                });
+                
+                const text = await response.text();
+                resultDiv.innerHTML = `<div class="debug-title">Direct aMember Response:</div><pre>${text}</pre>`;
+                
+                if (response.ok) {
+                    try {
+                        const data = JSON.parse(text);
+                        if (data.ok) {
+                            resultDiv.innerHTML += '<div class="success">✅ Direct aMember connection working!</div>';
+                        } else {
+                            resultDiv.innerHTML += `<div class="error">❌ aMember error: ${data.error}</div>`;
+                        }
+                    } catch (e) {
+                        resultDiv.innerHTML += '<div class="error">❌ Invalid JSON response from aMember</div>';
+                    }
+                } else {
+                    resultDiv.innerHTML += `<div class="error">❌ HTTP ${response.status}: ${response.statusText}</div>`;
+                }
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        // Save/load form data
+        document.getElementById('amemberUrl').value = localStorage.getItem('debugAmemberUrl') || '';
+        document.getElementById('apiKey').value = localStorage.getItem('debugApiKey') || '';
+        
+        document.getElementById('amemberUrl').addEventListener('change', (e) => {
+            localStorage.setItem('debugAmemberUrl', e.target.value);
+        });
+        
+        document.getElementById('apiKey').addEventListener('change', (e) => {
+            localStorage.setItem('debugApiKey', e.target.value);
+        });
+    </script>
+</body>
+</html>

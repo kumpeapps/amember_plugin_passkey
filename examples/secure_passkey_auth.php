@@ -8,6 +8,10 @@
  * SECURITY: API keys are never exposed to client-side code.
  */
 
+// Error reporting for debugging (remove in production)
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 // Load configuration
 $configFile = __DIR__ . '/config.php';
 if (!file_exists($configFile)) {
@@ -17,7 +21,24 @@ if (!file_exists($configFile)) {
     exit;
 }
 
-require_once $configFile;
+$config = require $configFile;
+
+// Handle both array config and constants
+if (is_array($config)) {
+    $amemberUrl = $config['amember_base_url'];
+    $apiKey = $config['api_key'];
+} else {
+    // Fallback to constants
+    $amemberUrl = defined('AMEMBER_URL') ? AMEMBER_URL : '';
+    $apiKey = defined('AMEMBER_API_KEY') ? AMEMBER_API_KEY : '';
+}
+
+if (empty($amemberUrl) || empty($apiKey)) {
+    http_response_code(500);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Configuration incomplete. Please set aMember URL and API key.']);
+    exit;
+}
 
 // CORS Headers for cross-origin requests
 header('Access-Control-Allow-Origin: *');
@@ -35,13 +56,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
  * Make API request to aMember with error handling
  */
 function makeApiRequest($endpoint, $data = null, $method = 'GET') {
-    $url = rtrim(AMEMBER_URL, '/') . $endpoint;
+    global $amemberUrl, $apiKey;
+    
+    $url = rtrim($amemberUrl, '/') . $endpoint;
     
     $options = [
         'http' => [
             'method' => $method,
             'header' => [
-                'X-API-Key: ' . AMEMBER_API_KEY,
+                'X-API-Key: ' . $apiKey,
                 'Content-Type: application/json'
             ],
             'timeout' => 30
@@ -56,12 +79,13 @@ function makeApiRequest($endpoint, $data = null, $method = 'GET') {
     $response = @file_get_contents($url, false, $context);
     
     if ($response === false) {
-        return ['error' => 'Failed to connect to aMember API'];
+        $error = error_get_last();
+        return ['error' => 'Failed to connect to aMember API: ' . ($error['message'] ?? 'Unknown error')];
     }
     
     $decoded = json_decode($response, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-        return ['error' => 'Invalid JSON response from API'];
+        return ['error' => 'Invalid JSON response from API: ' . substr($response, 0, 200)];
     }
     
     return $decoded;
@@ -71,6 +95,8 @@ function makeApiRequest($endpoint, $data = null, $method = 'GET') {
  * Get passkey configuration from aMember
  */
 function getPasskeyConfig() {
+    global $amemberUrl;
+    
     $endpoints = [
         '/api/passkey/config',
         '/api/passkey-config',
@@ -87,7 +113,7 @@ function getPasskeyConfig() {
     // Fallback configuration if API endpoint not available
     return [
         'ok' => true,
-        'rpId' => parse_url(AMEMBER_URL, PHP_URL_HOST),
+        'rpId' => parse_url($amemberUrl, PHP_URL_HOST),
         'rpName' => 'aMember',
         'timeout' => 60000,
         'userVerification' => 'preferred',
@@ -95,7 +121,9 @@ function getPasskeyConfig() {
         'endpoints' => [
             'config' => '/api/passkey/config',
             'authenticate' => '/api/check-access/by-passkey'
-        ]
+        ],
+        'fallback' => true,
+        'message' => 'Using fallback configuration - API endpoint may not be available'
     ];
 }
 
