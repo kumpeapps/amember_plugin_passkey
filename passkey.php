@@ -25,8 +25,8 @@ class Am_Plugin_Passkey extends Am_Plugin
 
     public function __construct($param1 = null, $param2 = null)
     {
-        // SIMPLIFIED CONSTRUCTOR FOR DEBUGGING
-        error_log('Passkey Plugin: Constructor called - Debugging enabled');
+        // ENHANCED DEBUGGING VERSION 2.0 - 2025-09-07
+        error_log('Passkey Plugin: Constructor called - ENHANCED DEBUGGING VERSION 2.0');
         
         // Use simple default parameters
         $di = Am_Di::getInstance();
@@ -402,28 +402,12 @@ class Am_Plugin_Passkey extends Am_Plugin
      */
     protected function ensureComposerDependencies()
     {
-        try {
-            $pluginDir = __DIR__;
-            $composerJsonPath = $pluginDir . '/composer.json';
-            $vendorPath = $pluginDir . '/vendor';
-            $autoloadPath = $vendorPath . '/autoload.php';
-            
-            // Check if dependencies are already installed
-            if (file_exists($autoloadPath) && file_exists($vendorPath . '/web-auth/webauthn-lib')) {
-                return; // Dependencies already installed
-            }
-            
-            // Check if composer.json exists, create if needed
-            if (!file_exists($composerJsonPath)) {
-                $this->createComposerJson($composerJsonPath);
-            }
-            
-            // Try to run composer install
-            $this->runComposerInstall($pluginDir);
-        } catch (Exception $e) {
-                error_log('Passkey Plugin: Error during composer setup: ' . $e->getMessage() . ' - Please check your configuration.');
-            // Don't fail completely, just log the error
-        }
+        // TEMPORARILY DISABLED for debugging
+        // The dependency check is causing issues, so we'll skip it for now
+        // and focus on getting the API working first
+        
+        error_log('Passkey Plugin: Composer dependency check SKIPPED for debugging');
+        return true;
     }
     
     /**
