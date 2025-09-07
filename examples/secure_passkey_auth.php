@@ -151,6 +151,72 @@ function authenticatePasskey($credentialData) {
     return ['error' => 'All authentication endpoints failed', 'ok' => false];
 }
 
+/**
+ * Add a related origin for cross-domain passkey usage
+ */
+function addRelatedOrigin($origin) {
+    $endpoints = [
+        '/api/passkey/config',
+        '/api/passkey-config',
+        '/misc/passkey?action=config'
+    ];
+    
+    $data = [
+        'action' => 'add-origin',
+        'origin' => $origin
+    ];
+    
+    $lastError = '';
+    foreach ($endpoints as $endpoint) {
+        $result = makeApiRequest($endpoint, $data, 'POST');
+        
+        if (isset($result['ok']) && $result['ok']) {
+            return $result;
+        }
+        
+        $lastError = isset($result['error']) ? $result['error'] : 
+                    (isset($result['message']) ? $result['message'] : 'Unknown error');
+    }
+    
+    return [
+        'ok' => false,
+        'error' => 'Failed to add related origin: ' . $lastError
+    ];
+}
+
+/**
+ * Remove a related origin
+ */
+function removeRelatedOrigin($origin) {
+    $endpoints = [
+        '/api/passkey/config',
+        '/api/passkey-config',
+        '/misc/passkey?action=config'
+    ];
+    
+    $data = [
+        'action' => 'remove-origin',
+        'origin' => $origin
+    ];
+    
+    $lastError = '';
+    foreach ($endpoints as $endpoint) {
+        $result = makeApiRequest($endpoint, $data, 'POST');
+        
+        if (isset($result['ok']) && $result['ok']) {
+            return $result;
+        }
+        
+        $lastError = isset($result['error']) ? $result['error'] : 
+                    (isset($result['message']) ? $result['message'] : 'Unknown error');
+    }
+    
+    return [
+        'ok' => false,
+        'error' => 'Failed to remove related origin: ' . $lastError
+    ];
+}
+
 // Handle different actions
 $action = $_GET['action'] ?? $_POST['action'] ?? 'config';
 
@@ -159,6 +225,44 @@ switch ($action) {
         // Get passkey configuration
         $config = getPasskeyConfig();
         echo json_encode($config);
+        break;
+        
+    case 'add-origin':
+        // Add related origin
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed. Use POST for add-origin.']);
+            break;
+        }
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!isset($input['origin'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Missing origin parameter']);
+            break;
+        }
+        
+        $result = addRelatedOrigin($input['origin']);
+        echo json_encode($result);
+        break;
+        
+    case 'remove-origin':
+        // Remove related origin
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed. Use POST for remove-origin.']);
+            break;
+        }
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!isset($input['origin'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Missing origin parameter']);
+            break;
+        }
+        
+        $result = removeRelatedOrigin($input['origin']);
+        echo json_encode($result);
         break;
         
     case 'authenticate':

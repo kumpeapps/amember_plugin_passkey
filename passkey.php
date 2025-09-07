@@ -149,12 +149,18 @@ class Am_Plugin_Passkey extends Am_Plugin
                 $event->stopPropagation();
             } elseif (preg_match('#^/api/passkey/config/?$#', $path)) {
                 error_log('Passkey Plugin: Matched passkey config endpoint - calling handlePasskeyConfig');
-                // Handle passkey configuration request
+                // Handle passkey configuration request (including related origins management)
                 $result = $this->handlePasskeyConfig($request);
                 error_log('Passkey Plugin: handlePasskeyConfig returned: ' . json_encode($result));
                 $event->setReturn($result);
                 $event->stopPropagation();
                 error_log('Passkey Plugin: Config endpoint processing complete');
+            } elseif (preg_match('#^/\.well-known/webauthn/?$#', $path)) {
+                error_log('Passkey Plugin: Matched .well-known/webauthn endpoint');
+                // Handle WebAuthn well-known file
+                $result = $this->handleWellKnownWebauthn($request);
+                $event->setReturn($result);
+                $event->stopPropagation();
             } else {
                 error_log('Passkey Plugin: No matching endpoint for path: ' . $path);
             }
@@ -294,51 +300,29 @@ class Am_Plugin_Passkey extends Am_Plugin
     }
 
     /**
-     * Handle the passkey configuration request
+     * Handle the passkey configuration request with related origins management
+     * 
+     * GET /api/passkey/config - Returns configuration including related origins
+     * POST /api/passkey/config?action=add-origin - Adds related origin and returns updated config  
+     * POST /api/passkey/config?action=remove-origin - Removes related origin and returns updated config
      */
     protected function handlePasskeyConfig($request)
     {
         error_log('Passkey Plugin: handlePasskeyConfig called');
         
         try {
-            $hostname = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            error_log('Passkey Plugin: Got hostname: ' . $hostname);
+            $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+            $action = $request ? $request->getParam('action') : (isset($_GET['action']) ? $_GET['action'] : '');
             
-            // Start with minimal configuration
-            $passkeyConfig = [
-                'ok' => true,
-                'rpId' => $hostname,
-                'rpName' => 'aMember',
-                'timeout' => 60000,
-                'userVerification' => 'preferred',
-                'attestation' => 'none',
-                'endpoints' => [
-                    'config' => '/api/passkey/config',
-                    'authenticate' => '/api/check-access/by-passkey'
-                ]
-            ];
+            error_log('Passkey Plugin: Method: ' . $method . ', Action: ' . $action);
             
-            error_log('Passkey Plugin: Basic config created');
-            
-            // Try to enhance with aMember configuration
-            try {
-                $di = Am_Di::getInstance();
-                error_log('Passkey Plugin: Got Am_Di instance');
-                
-                $config = $di->config;
-                error_log('Passkey Plugin: Got config object');
-                
-                $siteTitle = $config->get('site_title', 'aMember');
-                $passkeyConfig['rpName'] = $siteTitle;
-                error_log('Passkey Plugin: Enhanced with site title: ' . $siteTitle);
-                
-            } catch (Exception $configException) {
-                error_log('Passkey Plugin: Config enhancement failed: ' . $configException->getMessage());
-                // Continue with basic config
+            // Handle related origins management actions
+            if ($method === 'POST' && !empty($action)) {
+                return $this->handleRelatedOriginsAction($request, $action);
             }
             
-            error_log('Passkey Plugin: Returning config: ' . json_encode($passkeyConfig));
-            return $passkeyConfig;
+            // Default: Return passkey configuration (including related origins)
+            return $this->getPasskeyConfiguration();
             
         } catch (Exception $e) {
             error_log('Passkey Plugin: Configuration endpoint error: ' . $e->getMessage());
@@ -348,6 +332,393 @@ class Am_Plugin_Passkey extends Am_Plugin
                 'error' => 'Configuration error: ' . $e->getMessage(),
                 'debug' => 'Check server error logs for details'
             ];
+        }
+    }
+
+    /**
+     * Get complete passkey configuration including related origins
+     */
+    protected function getPasskeyConfiguration()
+    {
+        $hostname = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        error_log('Passkey Plugin: Got hostname: ' . $hostname);
+        
+        // Start with minimal configuration
+        $passkeyConfig = [
+            'ok' => true,
+            'rpId' => $hostname,
+            'rpName' => 'aMember',
+            'timeout' => 60000,
+            'userVerification' => 'preferred',
+            'attestation' => 'none',
+            'endpoints' => [
+                'config' => '/api/passkey/config',
+                'authenticate' => '/api/check-access/by-passkey'
+            ]
+        ];
+        
+        error_log('Passkey Plugin: Basic config created');
+        
+        // Try to enhance with aMember configuration
+        try {
+            $di = Am_Di::getInstance();
+            error_log('Passkey Plugin: Got Am_Di instance');
+            
+            $config = $di->config;
+            error_log('Passkey Plugin: Got config object');
+            
+            $siteTitle = $config->get('site_title', 'aMember');
+            $passkeyConfig['rpName'] = $siteTitle;
+            error_log('Passkey Plugin: Enhanced with site title: ' . $siteTitle);
+            
+            // Add related origins configuration
+            $relatedOriginsData = $this->getRelatedOrigins();
+            if ($relatedOriginsData['ok']) {
+                $passkeyConfig['relatedOrigins'] = [
+                    'rpId' => $relatedOriginsData['rpId'],
+                    'origins' => $relatedOriginsData['origins'],
+                    'wellKnownUrl' => $relatedOriginsData['wellKnownUrl']
+                ];
+                error_log('Passkey Plugin: Added related origins: ' . count($relatedOriginsData['origins']) . ' origins');
+            }
+            
+        } catch (Exception $configException) {
+            error_log('Passkey Plugin: Config enhancement failed: ' . $configException->getMessage());
+            // Continue with basic config
+        }
+        
+        error_log('Passkey Plugin: Returning config: ' . json_encode($passkeyConfig));
+        return $passkeyConfig;
+    }
+
+    /**
+     * Handle related origins management actions
+     */
+    protected function handleRelatedOriginsAction($request, $action)
+    {
+        error_log('Passkey Plugin: handleRelatedOriginsAction called with action: ' . $action);
+        
+        try {
+            if ($action === 'add-origin') {
+                // Get origin from request
+                $data = json_decode($request->getRawBody(), true);
+                if (!$data) {
+                    $data = $request->getPost();
+                }
+                if (!$data && isset($_POST)) {
+                    $data = $_POST;
+                }
+                
+                $origin = isset($data['origin']) ? $data['origin'] : null;
+                if (!$origin) {
+                    return [
+                        'ok' => false,
+                        'error' => 'Origin parameter required for add-origin action',
+                        'usage' => 'POST /api/passkey/config?action=add-origin with {"origin": "https://domain.com"}'
+                    ];
+                }
+                
+                // Add the origin
+                $result = $this->addRelatedOrigin($origin);
+                
+                // If successful, return updated configuration
+                if ($result['ok']) {
+                    $config = $this->getPasskeyConfiguration();
+                    $config['action_result'] = $result;
+                    return $config;
+                } else {
+                    return $result;
+                }
+                
+            } elseif ($action === 'remove-origin') {
+                // Get origin from request
+                $data = json_decode($request->getRawBody(), true);
+                if (!$data) {
+                    $data = $request->getPost();
+                }
+                if (!$data && isset($_POST)) {
+                    $data = $_POST;
+                }
+                
+                $origin = isset($data['origin']) ? $data['origin'] : null;
+                if (!$origin) {
+                    return [
+                        'ok' => false,
+                        'error' => 'Origin parameter required for remove-origin action',
+                        'usage' => 'POST /api/passkey/config?action=remove-origin with {"origin": "https://domain.com"}'
+                    ];
+                }
+                
+                // Remove the origin
+                $result = $this->removeRelatedOrigin($origin);
+                
+                // If successful, return updated configuration
+                if ($result['ok']) {
+                    $config = $this->getPasskeyConfiguration();
+                    $config['action_result'] = $result;
+                    return $config;
+                } else {
+                    return $result;
+                }
+                
+            } else {
+                return [
+                    'ok' => false,
+                    'error' => 'Unknown action: ' . $action,
+                    'supported_actions' => ['add-origin', 'remove-origin'],
+                    'usage' => [
+                        'add' => 'POST /api/passkey/config?action=add-origin with {"origin": "https://domain.com"}',
+                        'remove' => 'POST /api/passkey/config?action=remove-origin with {"origin": "https://domain.com"}'
+                    ]
+                ];
+            }
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Related origins action error: ' . $e->getMessage());
+            return [
+                'ok' => false,
+                'error' => 'Action error: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Handle .well-known/webauthn file serving
+     */
+    protected function handleWellKnownWebauthn($request)
+    {
+        error_log('Passkey Plugin: handleWellKnownWebauthn called');
+        
+        try {
+            $relatedOrigins = $this->getRelatedOrigins();
+            
+            if (!$relatedOrigins['ok']) {
+                // Return empty configuration if there's an error
+                $webauthnConfig = ['origins' => []];
+            } else {
+                $webauthnConfig = [
+                    'origins' => $relatedOrigins['origins']
+                ];
+            }
+            
+            // Set appropriate headers for .well-known file
+            header('Content-Type: application/json');
+            header('Access-Control-Allow-Origin: *');
+            header('Cache-Control: public, max-age=3600'); // Cache for 1 hour
+            
+            error_log('Passkey Plugin: Serving .well-known/webauthn: ' . json_encode($webauthnConfig));
+            return $webauthnConfig;
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Well-known WebAuthn error: ' . $e->getMessage());
+            return ['origins' => []]; // Return empty on error
+        }
+    }
+
+    /**
+     * Get current related origins configuration
+     */
+    protected function getRelatedOrigins()
+    {
+        try {
+            $config = Am_Di::getInstance()->config;
+            $currentHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            
+            // Get stored related origins from config
+            $relatedOriginsConfig = $config->get('misc.passkey.related_origins', '[]');
+            $relatedOrigins = json_decode($relatedOriginsConfig, true);
+            
+            if (!is_array($relatedOrigins)) {
+                $relatedOrigins = [];
+            }
+            
+            // Always include the current host as the primary RP ID
+            $origins = array_unique(array_merge(['https://' . $currentHost], $relatedOrigins));
+            
+            return [
+                'ok' => true,
+                'rpId' => $currentHost,
+                'origins' => $origins,
+                'wellKnownUrl' => 'https://' . $currentHost . '/.well-known/webauthn'
+            ];
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error getting related origins: ' . $e->getMessage());
+            return [
+                'ok' => false,
+                'error' => 'Failed to get related origins: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Add a new related origin
+     */
+    protected function addRelatedOrigin($origin)
+    {
+        try {
+            // Validate origin format
+            if (!$this->isValidOrigin($origin)) {
+                return ['ok' => false, 'error' => 'Invalid origin format. Use https://domain.com'];
+            }
+            
+            $config = Am_Di::getInstance()->config;
+            $relatedOriginsConfig = $config->get('misc.passkey.related_origins', '[]');
+            $relatedOrigins = json_decode($relatedOriginsConfig, true);
+            
+            if (!is_array($relatedOrigins)) {
+                $relatedOrigins = [];
+            }
+            
+            // Add new origin if not already present
+            if (!in_array($origin, $relatedOrigins)) {
+                $relatedOrigins[] = $origin;
+                
+                // Save back to config
+                $config->set('misc.passkey.related_origins', json_encode($relatedOrigins));
+                $config->save();
+                
+                // Trigger well-known file update
+                $this->updateWellKnownFile();
+                
+                error_log('Passkey Plugin: Added related origin: ' . $origin);
+                return [
+                    'ok' => true,
+                    'message' => 'Related origin added successfully',
+                    'origin' => $origin,
+                    'total_origins' => count($relatedOrigins) + 1 // +1 for primary domain
+                ];
+            } else {
+                return [
+                    'ok' => true,
+                    'message' => 'Origin already exists',
+                    'origin' => $origin
+                ];
+            }
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error adding related origin: ' . $e->getMessage());
+            return [
+                'ok' => false,
+                'error' => 'Failed to add related origin: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Remove a related origin
+     */
+    protected function removeRelatedOrigin($origin)
+    {
+        try {
+            $config = Am_Di::getInstance()->config;
+            $relatedOriginsConfig = $config->get('misc.passkey.related_origins', '[]');
+            $relatedOrigins = json_decode($relatedOriginsConfig, true);
+            
+            if (!is_array($relatedOrigins)) {
+                $relatedOrigins = [];
+            }
+            
+            // Remove origin if present
+            $key = array_search($origin, $relatedOrigins);
+            if ($key !== false) {
+                unset($relatedOrigins[$key]);
+                $relatedOrigins = array_values($relatedOrigins); // Re-index array
+                
+                // Save back to config
+                $config->set('misc.passkey.related_origins', json_encode($relatedOrigins));
+                $config->save();
+                
+                // Trigger well-known file update
+                $this->updateWellKnownFile();
+                
+                error_log('Passkey Plugin: Removed related origin: ' . $origin);
+                return [
+                    'ok' => true,
+                    'message' => 'Related origin removed successfully',
+                    'origin' => $origin,
+                    'total_origins' => count($relatedOrigins) + 1 // +1 for primary domain
+                ];
+            } else {
+                return [
+                    'ok' => false,
+                    'error' => 'Origin not found in related origins list',
+                    'origin' => $origin
+                ];
+            }
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error removing related origin: ' . $e->getMessage());
+            return [
+                'ok' => false,
+                'error' => 'Failed to remove related origin: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Validate origin format
+     */
+    protected function isValidOrigin($origin)
+    {
+        // Must start with https:// and be a valid URL
+        if (!preg_match('/^https:\/\/[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}(:[0-9]+)?$/', $origin)) {
+            return false;
+        }
+        
+        // Additional validation using filter_var
+        $url = filter_var($origin, FILTER_VALIDATE_URL);
+        return $url !== false && parse_url($url, PHP_URL_SCHEME) === 'https';
+    }
+
+    /**
+     * Update the physical .well-known/webauthn file if filesystem access is available
+     */
+    protected function updateWellKnownFile()
+    {
+        try {
+            // Get document root
+            $documentRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+            if (empty($documentRoot)) {
+                error_log('Passkey Plugin: Cannot update .well-known file - document root not available');
+                return false;
+            }
+            
+            $wellKnownDir = $documentRoot . '/.well-known';
+            $wellKnownFile = $wellKnownDir . '/webauthn';
+            
+            // Create .well-known directory if it doesn't exist
+            if (!is_dir($wellKnownDir)) {
+                if (!mkdir($wellKnownDir, 0755, true)) {
+                    error_log('Passkey Plugin: Failed to create .well-known directory');
+                    return false;
+                }
+            }
+            
+            // Get current origins
+            $originsData = $this->getRelatedOrigins();
+            if (!$originsData['ok']) {
+                error_log('Passkey Plugin: Failed to get origins for .well-known file');
+                return false;
+            }
+            
+            $webauthnConfig = [
+                'origins' => $originsData['origins']
+            ];
+            
+            // Write the file
+            $jsonContent = json_encode($webauthnConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            if (file_put_contents($wellKnownFile, $jsonContent) !== false) {
+                error_log('Passkey Plugin: Updated .well-known/webauthn file successfully');
+                return true;
+            } else {
+                error_log('Passkey Plugin: Failed to write .well-known/webauthn file');
+                return false;
+            }
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error updating .well-known file: ' . $e->getMessage());
+            return false;
         }
     }
 
@@ -898,6 +1269,45 @@ class Am_Plugin_Passkey extends Am_Plugin
                 </ul>
             ');
             
+            // Add Related Origins section for cross-domain passkey usage
+            $form->addHtml('<h3>Related Origins (Cross-Domain Passkey Support)</h3>');
+            $form->addStatic()->setLabel('')->setContent('<em>Configure additional domains that can use passkeys created on this site.</em>');
+            
+            $form->addTextarea('related_origins', ['class' => 'am-el-wide', 'rows' => 4])
+                ->setLabel('Related Origins (JSON Array)')
+                ->setComment('Enter a JSON array of allowed origins, e.g., ["https://app.example.com", "https://mobile.example.com"]<br>Leave empty if you only use this domain.')
+                ->setValue(Am_Di::getInstance()->config->get('misc.passkey.related_origins', '[]'));
+            
+            $form->addStatic()->setLabel('Cross-Domain Setup')->setContent('
+                <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; border: 1px solid #b3d9ff;">
+                    <p><strong>🌐 How Related Origins Work:</strong></p>
+                    <ul>
+                        <li><strong>Single Domain:</strong> Passkeys work automatically on subdomains (e.g., app.example.com works with example.com)</li>
+                        <li><strong>Multiple Domains:</strong> For completely different domains, you need to configure related origins</li>
+                        <li><strong>Security:</strong> Only domains you explicitly allow can use passkeys created here</li>
+                    </ul>
+                    
+                    <p><strong>📋 Setup Steps:</strong></p>
+                    <ol>
+                        <li>Add allowed origins to the field above (JSON format)</li>
+                        <li>Save configuration</li>
+                        <li>The plugin will automatically create the <code>/.well-known/webauthn</code> file</li>
+                        <li>Other domains can now use passkeys created on this site</li>
+                    </ol>
+                    
+                    <p><strong>🔗 API Endpoints:</strong></p>
+                    <ul>
+                        <li><code>GET /api/passkey/related-origins</code> - View current configuration</li>
+                        <li><code>POST /api/passkey/related-origins</code> - Add new origin</li>
+                        <li><code>DELETE /api/passkey/related-origins</code> - Remove origin</li>
+                        <li><code>GET /.well-known/webauthn</code> - WebAuthn specification file</li>
+                    </ul>
+                    
+                    <p><strong>⚠️ Example Error Fixed:</strong></p>
+                    <p>If you see "<em>The requested RPID did not match the origin</em>", this feature will resolve it by allowing your passkeys to work across your configured domains.</p>
+                </div>
+            ');
+            
             // Add admin management section
             $form->addHtml('<h3>Admin Management</h3>');
             $form->addStatic()->setLabel('Manage Passkeys')->setContent('
@@ -987,6 +1397,26 @@ class Am_Plugin_Passkey extends Am_Plugin
                 header('Content-Type: application/json');
                 http_response_code(500);
                 echo json_encode(['error' => 'Direct API error: ' . $e->getMessage()]);
+                exit;
+            }
+        }
+        
+        // DIRECT .well-known/webauthn HANDLING - No authentication required (public file)
+        if (strpos($currentUri, '/.well-known/webauthn') !== false) {
+            error_log('Passkey Plugin: DIRECT .well-known/webauthn request detected');
+            
+            try {
+                $result = $this->handleWellKnownWebauthn(null);
+                
+                // Headers are already set in the handler
+                echo json_encode($result);
+                exit;
+                
+            } catch (Exception $e) {
+                error_log('Passkey Plugin: Direct .well-known/webauthn error: ' . $e->getMessage());
+                header('Content-Type: application/json');
+                http_response_code(500);
+                echo json_encode(['origins' => []]);
                 exit;
             }
         }
