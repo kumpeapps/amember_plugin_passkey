@@ -79,15 +79,164 @@ class Am_Plugin_Passkey extends Am_Plugin
         // Ensure Composer dependencies are installed
         $this->ensureComposerDependencies();
         
-        // Register REST API endpoint
-        Am_Di::getInstance()->hook->add('apiCheckAccessByPasskey', array($this, 'onApiCheckAccessByPasskey'));
+        // Register REST API controller for check-access
+        Am_Di::getInstance()->hook->add('initFinished', array($this, 'registerApiController'));
     }
     
+    /**
+     * Register REST API controller for /api/check-access/by-passkey
+     */
+    public function registerApiController()
+    {
+        try {
+            // Register the check-access/by-passkey endpoint
+            $di = Am_Di::getInstance();
+            
+            // Register API permissions for this endpoint
+            $di->hook->add('apiGetPermissions', array($this, 'onApiGetPermissions'));
+            
+            // Hook into API routing
+            $di->hook->add('apiRoute', array($this, 'onApiRoute'));
+            
+            error_log('Passkey Plugin: API hooks registered');
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error registering API controller: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Add API permissions for passkey endpoints
+     */
+    public function onApiGetPermissions($event)
+    {
+        $permissions = $event->getReturn();
+        if (!is_array($permissions)) {
+            $permissions = array();
+        }
+        
+        $permissions['check-access-by-passkey'] = 'Check Access by Passkey';
+        $event->setReturn($permissions);
+        
+        error_log('Passkey Plugin: Added API permission: check-access-by-passkey');
+    }
+    
+    /**
+     * Handle API routing for check-access/by-passkey
+     */
+    public function onApiRoute($event)
+    {
+        $request = $event->getRequest();
+        $path = $request->getPathInfo();
+        
+        error_log('Passkey Plugin: API Route called with path: ' . $path);
+        
+        if (preg_match('#^/api/check-access/by-passkey/?$#', $path)) {
+            // Check API permissions
+            $apiKey = $request->getParam('_key') ?: $request->getHeader('X-API-Key');
+            if (!$this->checkApiPermission($apiKey, 'check-access-by-passkey')) {
+                $event->setReturn(array('error' => 'Access denied', 'code' => 403));
+                $event->stopPropagation();
+                return;
+            }
+            
+            // Handle the request
+            $result = $this->handlePasskeyCheckAccess($request);
+            $event->setReturn($result);
+            $event->stopPropagation();
+        }
+    }
+    
+    /**
+     * Check API permission for given key and permission
+     */
+    protected function checkApiPermission($apiKey, $permission)
+    {
+        if (!$apiKey) {
+            return false;
+        }
+        
+        try {
+            $di = Am_Di::getInstance();
+            $db = $di->db;
+            
+            $row = $db->selectRow('SELECT * FROM ?_api_key WHERE api_key = ?', $apiKey);
+            if (!$row) {
+                return false;
+            }
+            
+            $permissions = explode(',', $row['permissions']);
+            return in_array($permission, $permissions);
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error checking API permission: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Handle the actual passkey check access request
+     */
+    protected function handlePasskeyCheckAccess($request)
+    {
+        try {
+            // Get request data
+            $data = json_decode($request->getRawBody(), true);
+            if (!$data) {
+                // Try form data if JSON fails
+                $data = $request->getPost();
+            }
+            
+            $credential = isset($data['credential']) ? $data['credential'] : null;
+            $result = [
+                'ok' => false,
+                'user_id' => null,
+                'name' => null,
+                'email' => null,
+                'access' => false,
+                'error' => 'Invalid request',
+            ];
+            
+            if ($credential) {
+                $user = $this->findUserByPasskeyCredential($credential);
+                if ($user) {
+                    $isValid = $this->verifyPasskeyCredential($user, $credential);
+                    if ($isValid) {
+                        $result['ok'] = true;
+                        $result['user_id'] = $user->pk();
+                        $result['name'] = $user->name_f;
+                        $result['email'] = $user->email;
+                        $result['access'] = true;
+                        $result['error'] = null;
+                    } else {
+                        $result['error'] = 'Invalid passkey credential';
+                    }
+                } else {
+                    $result['error'] = 'User not found';
+                }
+            }
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            return [
+                'ok' => false,
+                'error' => 'Internal error: ' . $e->getMessage(),
+                'user_id' => null,
+                'name' => null,
+                'email' => null,
+                'access' => false
+            ];
+        }
+    }
+
     /**
      * REST API endpoint: /api/check-access/by-passkey
      * Verifies user access using passkey (WebAuthn/FIDO2) credentials.
      * Request: POST with JSON { credential: { ... } }
      * Response: { ok: true, user_id: ..., name: ..., email: ..., access: true, error: null }
+     * 
+     * @deprecated This method is kept for backward compatibility but is no longer called directly
      */
     public function onApiCheckAccessByPasskey($event)
         {

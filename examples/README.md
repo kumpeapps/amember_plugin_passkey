@@ -22,14 +22,13 @@ A secure PHP proxy script that:
 - Provides CORS support for frontend integration
 - Includes proper error handling and security measures
 
-### `config.example.php`
+### test_api_proxy.html
 
-Configuration template for:
+Simple test to verify the API proxy is accessible and responds correctly.
 
-- aMember installation URL
-- API key storage
-- CORS and security settings
-- Copy to `config.php` for actual use
+### test_direct_plugin.html
+
+Direct test of aMember endpoints without the proxy - useful for debugging plugin integration.
 
 ## Setup Instructions
 
@@ -82,6 +81,23 @@ If "login-by-passkey" doesn't appear in aMember API permissions:
 2. **Update Values**: Verify all configuration values are correct
 3. **API Key**: Generate a new API key in aMember if needed
 4. **HTTPS**: Ensure both aMember and your proxy use HTTPS
+
+### Debugging Steps
+
+1. **Test API Proxy**: Open `test_api_proxy.html` to verify proxy accessibility
+2. **Test Direct Plugin**: Open `test_direct_plugin.html` to test aMember integration directly
+3. **Check aMember Logs**: Look in aMember error logs for plugin errors
+4. **Verify Plugin**: Ensure passkey plugin is enabled in aMember admin
+5. **API Key Permissions**: Make sure your API key has the correct permissions
+
+### Alternative Solutions
+
+If the API endpoint issues persist:
+
+1. **Use Alternative Endpoints**: The proxy now tries multiple endpoint patterns
+2. **Check Plugin Version**: Ensure you have the latest plugin version
+3. **Manual Testing**: Use the direct test files to identify which endpoints work
+4. **Contact Support**: If all tests fail, the plugin may need updates for your aMember version
 
 ## Security Features
 

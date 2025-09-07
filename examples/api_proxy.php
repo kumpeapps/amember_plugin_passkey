@@ -51,48 +51,56 @@ try {
     // Prepare request to aMember API
     $apiUrl = $config['amember_base_url'] . $config['api_endpoint'];
     
+    // Try alternative endpoint names if the configured one doesn't work
+    $endpoints = [
+        $config['api_endpoint'], // /api/check-access/by-passkey
+        '/api/passkey-check-access', // Alternative naming
+        '/api/check-access-by-passkey', // Another alternative
+    ];
+    
     $requestData = [
         'credential' => $data['credential']
     ];
     
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $apiUrl,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode($requestData),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'X-API-Key: ' . $config['api_key'], // Add API key authentication
-            'Accept: application/json'
-        ],
-        CURLOPT_TIMEOUT => $config['timeout'],
-        CURLOPT_SSL_VERIFYPEER => $config['verify_ssl'],
-        CURLOPT_SSL_VERIFYHOST => $config['verify_ssl'] ? 2 : 0,
-        CURLOPT_FOLLOWLOCATION => false,
-        CURLOPT_MAXREDIRS => 0
-    ]);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlError = curl_error($ch);
-    curl_close($ch);
-    
-    if ($curlError) {
-        throw new Exception('API request failed: ' . $curlError);
+    $lastError = '';
+    foreach ($endpoints as $endpoint) {
+        $testUrl = $config['amember_base_url'] . $endpoint;
+        
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $testUrl,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($requestData),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'X-API-Key: ' . $config['api_key'], // Add API key authentication
+                'Accept: application/json'
+            ],
+            CURLOPT_TIMEOUT => $config['timeout'],
+            CURLOPT_SSL_VERIFYPEER => $config['verify_ssl'],
+            CURLOPT_SSL_VERIFYHOST => $config['verify_ssl'] ? 2 : 0,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_MAXREDIRS => 0
+        ]);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        
+        if (!$curlError && $httpCode === 200) {
+            // Success! Return the response
+            echo $response;
+            exit;
+        }
+        
+        $lastError = "Endpoint $endpoint: HTTP $httpCode" . ($curlError ? " - $curlError" : "");
     }
     
-    if ($httpCode !== 200) {
-        throw new Exception('API returned HTTP ' . $httpCode);
-    }
     
-    $responseData = json_decode($response, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new Exception('Invalid JSON response from API');
-    }
-    
-    // Return the API response
-    echo $response;
+    // If we get here, all endpoints failed
+    throw new Exception('All API endpoints failed. Last error: ' . $lastError);
     
 } catch (Exception $e) {
     http_response_code(500);
@@ -102,7 +110,12 @@ try {
         'user_id' => null,
         'name' => null,
         'email' => null,
-        'access' => false
+        'access' => false,
+        'debug_info' => [
+            'config_endpoint' => $config['api_endpoint'],
+            'base_url' => $config['amember_base_url'],
+            'has_api_key' => !empty($config['api_key'])
+        ]
     ]);
 }
 ?>

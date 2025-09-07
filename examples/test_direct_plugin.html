@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Plugin Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        pre { background: #f8f9fa; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Direct Plugin Test</h1>
+    
+    <div class="test-section info">
+        <h3>Testing aMember Passkey Plugin Integration</h3>
+        <p>This test directly calls the aMember plugin method to verify it's working.</p>
+    </div>
+    
+    <div id="results"></div>
+    
+    <script>
+        // Test the direct aMember endpoint (bypassing proxy)
+        const testEndpoints = [
+            '/api/check-access/by-passkey',
+            '/api/passkey-check-access', 
+            '/misc/passkey?action=check-access',
+            '/misc/passkey'
+        ];
+        
+        const testCredential = {
+            id: 'test-credential-id',
+            type: 'public-key',
+            response: {
+                clientDataJSON: 'dGVzdC1jbGllbnQtZGF0YQ==',
+                authenticatorData: 'dGVzdC1hdXRoZW50aWNhdG9yLWRhdGE=',
+                signature: 'dGVzdC1zaWduYXR1cmU=',
+                userHandle: 'dGVzdC11c2VyLWhhbmRsZQ=='
+            },
+            challenge: 'dGVzdC1jaGFsbGVuZ2U='
+        };
+        
+        async function testEndpoint(endpoint) {
+            try {
+                console.log(`Testing endpoint: ${endpoint}`);
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        credential: testCredential
+                    })
+                });
+                
+                const text = await response.text();
+                
+                return {
+                    endpoint,
+                    status: response.status,
+                    response: text,
+                    success: response.status < 400
+                };
+                
+            } catch (error) {
+                return {
+                    endpoint,
+                    status: 'ERROR',
+                    response: error.message,
+                    success: false
+                };
+            }
+        }
+        
+        async function runTests() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="test-section info"><h3>Running Tests...</h3></div>';
+            
+            const results = [];
+            
+            for (const endpoint of testEndpoints) {
+                const result = await testEndpoint(endpoint);
+                results.push(result);
+                
+                const sectionClass = result.success ? 'success' : 'error';
+                const html = `
+                    <div class="test-section ${sectionClass}">
+                        <h4>Endpoint: ${result.endpoint}</h4>
+                        <p><strong>Status:</strong> ${result.status}</p>
+                        <p><strong>Response:</strong></p>
+                        <pre>${result.response}</pre>
+                    </div>
+                `;
+                
+                resultsDiv.innerHTML += html;
+            }
+            
+            // Summary
+            const successCount = results.filter(r => r.success).length;
+            const summaryClass = successCount > 0 ? 'success' : 'error';
+            const summary = `
+                <div class="test-section ${summaryClass}">
+                    <h3>Test Summary</h3>
+                    <p>Successful endpoints: ${successCount} / ${results.length}</p>
+                    ${successCount > 0 ? 
+                        '<p>✅ At least one endpoint is working! The plugin is integrated.</p>' : 
+                        '<p>❌ No endpoints are working. Check plugin installation and aMember configuration.</p>'
+                    }
+                </div>
+            `;
+            
+            resultsDiv.innerHTML += summary;
+        }
+        
+        // Run tests when page loads
+        document.addEventListener('DOMContentLoaded', runTests);
+    </script>
+</body>
+</html>
