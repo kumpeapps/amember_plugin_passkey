@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Passkey Login Example - aMember Integration</title>
+    <title>Passkey Login (Secure)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -67,6 +67,13 @@
             border-radius: 6px;
             margin: 20px 0;
         }
+        .security-note {
+            background: #d4edda;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border: 1px solid #c3e6cb;
+        }
         code {
             background: #f4f4f4;
             padding: 2px 4px;
@@ -77,8 +84,18 @@
 </head>
 <body>
     <div class="login-container">
-        <h1>🔐 Passkey Login Example</h1>
-        <p>This example demonstrates how to authenticate users with passkeys using the aMember Passkey Plugin API.</p>
+        <h1>🔐 Secure Passkey Login</h1>
+        <p>This version uses a secure server-side authentication proxy. Your API key never leaves the server.</p>
+        
+        <div class="security-note">
+            <h3>🛡️ Security Features</h3>
+            <ul>
+                <li>✅ API key stored securely on server</li>
+                <li>✅ No sensitive data exposed to browser</li>
+                <li>✅ Server-side credential verification</li>
+                <li>✅ CORS protection enabled</li>
+            </ul>
+        </div>
         
         <div id="status"></div>
         
@@ -99,28 +116,27 @@
             <ol>
                 <li>Click "Sign in with Passkey" to trigger WebAuthn authentication</li>
                 <li>Browser prompts for biometric/device authentication</li>
-                <li>Credential is sent to API proxy which forwards to aMember with API key</li>
-                <li>aMember verifies the credential and returns user information</li>
+                <li>Credential is sent to secure server-side proxy</li>
+                <li>Server forwards request to aMember with protected API key</li>
+                <li>aMember verifies credential and returns user information</li>
             </ol>
             
-            <h4>API Flow:</h4>
-            <p><code>Frontend → api_proxy.php → aMember /api/check-access/by-passkey</code></p>
-            <p><strong>Frontend Request:</strong> <code>{ "credential": { ... } }</code></p>
-            <p><strong>Proxy adds:</strong> API key authentication header</p>
-            <p><strong>Response:</strong> <code>{ "ok": true, "user_id": 123, "name": "John Doe", "email": "john@example.com", "access": true }</code></p>
+            <h4>Security Architecture:</h4>
+            <p><code>Frontend → secure_passkey_auth.php → aMember API</code></p>
+            <p>API key remains secure on server, never exposed to client.</p>
+            
+            <h4>Setup Required:</h4>
+            <ul>
+                <li>Configure <code>config.php</code> with your aMember URL and API key</li>
+                <li>Ensure <code>secure_passkey_auth.php</code> is accessible via web server</li>
+                <li>API key needs "by-login-pass" permission in aMember</li>
+            </ul>
         </div>
     </div>
 
     <script>
-        // Configuration - Update this URL to match your API proxy location
-        // Try different possible paths for the API proxy
-        const POSSIBLE_API_PATHS = [
-            './api_proxy.php',           // Same directory
-            '../api_proxy.php',          // Parent directory  
-            '/api_proxy.php',            // Web root
-            '/examples/api_proxy.php',   // Examples folder in web root
-            window.location.pathname.replace('/passkey_login_example.html', '/api_proxy.php') // Calculated path
-        ];
+        // Configuration - secure endpoint that handles API key server-side
+        const SECURE_AUTH_ENDPOINT = './secure_passkey_auth.php';
         
         // DOM Elements
         const statusDiv = document.getElementById('status');
@@ -150,38 +166,8 @@
             return str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
         }
         
-        function base64urlDecode(str) {
-            return atob(base64urlToBase64(str));
-        }
-        
-        function base64urlEncode(buffer) {
-            return base64ToBase64url(btoa(String.fromCharCode(...new Uint8Array(buffer))));
-        }
-        
-        // Convert ArrayBuffer to Base64URL
         function arrayBufferToBase64url(buffer) {
-            return base64urlEncode(buffer);
-        }
-        
-        // Find working API proxy
-        async function findWorkingApiProxy() {
-            for (const path of POSSIBLE_API_PATHS) {
-                try {
-                    const response = await fetch(path, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ test: true })
-                    });
-                    
-                    if (response.status !== 404) {
-                        console.log('Found working API proxy at:', path);
-                        return path;
-                    }
-                } catch (e) {
-                    // Continue trying other paths
-                }
-            }
-            throw new Error('No working API proxy found. Please check api_proxy.php location.');
+            return base64ToBase64url(btoa(String.fromCharCode(...new Uint8Array(buffer))));
         }
         
         // Main passkey authentication function
@@ -193,9 +179,6 @@
                 if (!window.PublicKeyCredential) {
                     throw new Error('WebAuthn is not supported in this browser');
                 }
-                
-                showStatus('📡 Finding API proxy...');
-                const apiProxyUrl = await findWorkingApiProxy();
                 
                 showStatus('🔑 Requesting passkey authentication...');
                 loginButton.disabled = true;
@@ -220,7 +203,7 @@
                     throw new Error('No credential received from authenticator');
                 }
                 
-                showStatus('📡 Verifying credential with aMember...');
+                showStatus('📡 Verifying credential with secure server...');
                 
                 // Prepare credential data for API
                 const credentialData = {
@@ -237,8 +220,8 @@
                     challenge: arrayBufferToBase64url(authOptions.challenge)
                 };
                 
-                // Send credential to API proxy for verification
-                const response = await fetch(apiProxyUrl, {
+                // Send credential to secure server endpoint
+                const response = await fetch(SECURE_AUTH_ENDPOINT, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -249,7 +232,7 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+                    throw new Error(`Server error: ${response.status} ${response.statusText}`);
                 }
                 
                 const result = await response.json();
@@ -279,7 +262,7 @@
                 showStatus('⚠️ WebAuthn is not supported in this browser. Please use a modern browser with passkey support.', 'error');
                 loginButton.disabled = true;
             } else {
-                showStatus('✨ Ready to authenticate with passkey!', 'info');
+                showStatus('✨ Ready for secure passkey authentication!', 'info');
             }
         });
     </script>

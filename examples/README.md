@@ -48,6 +48,7 @@ Direct test of aMember endpoints without the proxy - useful for debugging plugin
    - Login to aMember admin
    - Go to Setup/Configuration → API
    - Generate a new API key
+   - **Important**: Enable the "by-login-pass" permission (passkey auth uses the same permission as password auth)
 
 4. **Deploy Files**: Upload both PHP files to your web server
 
@@ -68,12 +69,12 @@ If you get a 404 error:
 
 ### Missing API Permission
 
-If "login-by-passkey" doesn't appear in aMember API permissions:
+If you get "API Error 10001 - no [key] specified" or "Access denied":
 
 1. **Enable Plugin**: Make sure the passkey plugin is enabled in aMember admin
-2. **Plugin Version**: Ensure you have the latest version with API endpoint registration
-3. **Clear Cache**: Clear aMember cache and refresh the API permissions page
-4. **Check Logs**: Look in aMember error logs for plugin initialization errors
+2. **Check API Key**: Ensure your API key is correct and active
+3. **Enable Permission**: In aMember API settings, enable the **"by-login-pass"** permission for your API key
+4. **No Custom Permission Needed**: Passkey auth uses the same permission as password-based auth for security consistency
 
 ### Configuration Issues
 

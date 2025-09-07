@@ -11,6 +11,7 @@ return [
     'amember_base_url' => 'https://your-amember-site.com',
     
     // Your aMember API key (generate in aMember admin -> Setup/Configuration -> API)
+    // Make sure to enable "by-login-pass" permission for this API key
     'api_key' => 'your-api-key-here',
     
     // API endpoint for passkey verification

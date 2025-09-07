@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚠️ SECURITY WARNING</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f8d7da;
+        }
+        .warning-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 3px solid #dc3545;
+        }
+        .warning {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 6px;
+            border: 1px solid #f5c6cb;
+            margin: 20px 0;
+        }
+        .secure-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="warning-container">
+        <h1>� SECURITY WARNING</h1>
+        
+        <div class="warning">
+            <h3>⚠️ This file contained a security vulnerability!</h3>
+            <p><strong>Issue:</strong> API keys were exposed in client-side code, making them visible to anyone who views the page source.</p>
+            <p><strong>Risk:</strong> Exposed API keys can be used by malicious actors to access your aMember system.</p>
+        </div>
+        
+        <h3>✅ Secure Alternative Available</h3>
+        <p>Use the secure version instead:</p>
+        <a href="./passkey_login_secure.html" class="secure-button">
+            🛡️ Use Secure Passkey Login
+        </a>
+        
+        <h3>🔒 Why the secure version is better:</h3>
+        <ul>
+            <li>✅ API key stays on the server (never exposed to browsers)</li>
+            <li>✅ Server-side authentication proxy</li>
+            <li>✅ CORS protection</li>
+            <li>✅ No sensitive data in client code</li>
+        </ul>
+        
+        <h3>📝 Security Best Practices:</h3>
+        <ul>
+            <li><strong>Never put API keys in client-side code</strong></li>
+            <li><strong>Always use server-side proxies for API authentication</strong></li>
+            <li><strong>Store sensitive configuration in protected server files</strong></li>
+            <li><strong>Use HTTPS for all authentication endpoints</strong></li>
+        </ul>
+        
+        <div class="warning">
+            <p><strong>If you used this file before:</strong></p>
+            <ol>
+                <li>Generate a new API key in aMember admin</li>
+                <li>Disable/delete the old API key</li>
+                <li>Use the secure version going forward</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

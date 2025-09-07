@@ -92,33 +92,14 @@ class Am_Plugin_Passkey extends Am_Plugin
             // Register the check-access/by-passkey endpoint
             $di = Am_Di::getInstance();
             
-            // Register API permissions for this endpoint
-            $di->hook->add('apiGetPermissions', array($this, 'onApiGetPermissions'));
-            
-            // Hook into API routing
+            // Hook into API routing (no need for custom permissions, use existing by-login-pass)
             $di->hook->add('apiRoute', array($this, 'onApiRoute'));
             
-            error_log('Passkey Plugin: API hooks registered');
+            error_log('Passkey Plugin: API hooks registered (using by-login-pass permission)');
             
         } catch (Exception $e) {
             error_log('Passkey Plugin: Error registering API controller: ' . $e->getMessage());
         }
-    }
-    
-    /**
-     * Add API permissions for passkey endpoints
-     */
-    public function onApiGetPermissions($event)
-    {
-        $permissions = $event->getReturn();
-        if (!is_array($permissions)) {
-            $permissions = array();
-        }
-        
-        $permissions['check-access-by-passkey'] = 'Check Access by Passkey';
-        $event->setReturn($permissions);
-        
-        error_log('Passkey Plugin: Added API permission: check-access-by-passkey');
     }
     
     /**
@@ -132,9 +113,9 @@ class Am_Plugin_Passkey extends Am_Plugin
         error_log('Passkey Plugin: API Route called with path: ' . $path);
         
         if (preg_match('#^/api/check-access/by-passkey/?$#', $path)) {
-            // Check API permissions
+            // Check API permissions using existing by-login-pass permission
             $apiKey = $request->getParam('_key') ?: $request->getHeader('X-API-Key');
-            if (!$this->checkApiPermission($apiKey, 'check-access-by-passkey')) {
+            if (!$this->checkApiPermission($apiKey, 'by-login-pass')) {
                 $event->setReturn(array('error' => 'Access denied', 'code' => 403));
                 $event->stopPropagation();
                 return;
