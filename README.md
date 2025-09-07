@@ -1,20 +1,167 @@
 
-# aMember Passkey Authentication Plugin
+# 🔐 aMember Pro Passkey Authentication Plugin
 
-A modern, passwordless authentication plugin for aMember Pro that enables users to log in using **passkeys** (WebAuthn/FIDO2) with biometrics, security keys, or device authentication.
+A comprehensive **single-file** WebAuthn/FIDO2 passkey authentication plugin for aMember Pro that provides modern passwordless authentication with complete admin management.
 
-## ✨ Features
+## ✨ **Key Features**
 
-- **🔐 Passwordless Authentication** - Users log in with TouchID, FaceID, Windows Hello, or security keys
-- **🚀 Plug-and-Play Installation** - Automatic dependency management, no manual setup required
-- **🛡️ Enhanced Security** - WebAuthn/FIDO2 standard with phishing-resistant authentication
-- **📱 Cross-Platform Support** - Works on desktop, mobile, and all modern browsers
-- **⚙️ Admin Configuration** - Comprehensive settings for timeout, user verification, and authenticator preferences
-- **👤 User-Friendly Management** - Users can register multiple passkeys and manage them from their profile
-- **👑 Administrator Support** - Dedicated admin passkey functionality with enhanced security settings
-- **🔄 Passkey Copy Feature** - Admins can copy passkeys from their member accounts
-- **🗂️ Separate Admin Table** - Admin passkeys stored separately with stricter security policies
-- **🎛️ Dual Configuration** - Different WebAuthn settings for members vs administrators
+### 🔑 **Complete Passkey Authentication**
+- **WebAuthn/FIDO2 Implementation** - Industry standard passwordless authentication
+- **Multi-Device Support** - TouchID, FaceID, Windows Hello, USB security keys
+- **User & Admin Authentication** - Separate secure authentication for both user and admin accounts
+- **Cross-Platform Compatibility** - Works on all modern browsers and devices
+
+### 🛠️ **Self-Contained Design**
+- **Single File Plugin** - Complete functionality in one file (`passkey.php`)
+- **Auto-Installing Dependencies** - Automatically installs required Composer packages
+- **Built-in Admin Interface** - Self-contained admin dashboard and management tools
+- **No External Files Required** - Everything needed is included in the plugin
+
+### 🎛️ **Comprehensive Admin Management**
+- **Built-in Admin Dashboard** - Professional interface with navigation (`/ajax.php?action=admin-passkey-dashboard`)
+- **Complete User Overview** - View all users with passkeys, statistics, and management tools
+- **Individual User Details** - Detailed passkey information per user with delete capabilities
+- **Real-time Statistics** - User counts, passkey totals, registration timelines
+- **Debug & Test Tools** - Built-in diagnostics and status checking
+
+### ⚙️ **Advanced Configuration**
+- **Flexible Settings** - Configurable authenticator requirements, user verification, attestation
+- **Separate Admin Security** - Stricter security settings for admin accounts
+- **Platform Preferences** - Control platform vs cross-platform authenticator usage
+- **Security Policies** - Customizable security requirements for different user types
+
+## 🚀 **Installation**
+
+### **Simple Installation Process**
+1. **Upload the Plugin File**
+   ```
+   Upload passkey.php to: /path/to/amember/application/default/plugins/misc/passkey.php
+   ```
+
+2. **Activate in aMember Admin**
+   - Go to **aMember Admin** → **Setup/Configuration** → **Plugins** → **Miscellaneous**
+   - Find **"Passkey"** plugin and **enable** it
+   - Configure the plugin settings
+   - **Save** the configuration
+
+3. **Access Admin Interface**
+   - Configuration page will show admin management links
+   - Use the built-in admin dashboard for comprehensive management
+
+### **That's It!**
+- Dependencies auto-install automatically
+- Database tables created automatically  
+- No additional files or setup required
+
+## 🎯 **Admin Interface Access**
+
+### **Primary Access Methods**
+1. **Plugin Configuration** (Recommended)
+   - aMember Admin → Setup → Plugins → Miscellaneous → Passkey
+   - Click "�️ Admin Dashboard" for full interface
+
+2. **User Admin Tabs**
+   - aMember Admin → Users → Select user → "Passkeys" tab
+   - Links to both individual and overall management
+
+3. **Direct URLs** (Bookmark these)
+   - **Admin Dashboard**: `/ajax.php?action=admin-passkey-dashboard`
+   - **Direct Management**: `/ajax.php?action=admin-passkey-management`
+   - **Test Status**: `/ajax.php?action=passkey-test-status`
+   - **Debug Info**: `/ajax.php?action=passkey-debug`
+
+## 📊 **Admin Features**
+
+### **Dashboard Overview**
+- **Professional Interface** - Clean, responsive design with navigation
+- **User Statistics** - Complete overview of passkey adoption and usage
+- **Quick Access** - Direct links to all management functions
+- **Embedded Tools** - All management pages accessible within the dashboard
+
+### **User Management**
+- **Complete User List** - All users with registered passkeys
+- **Device Information** - Device names, types, registration dates
+- **Individual Details** - Detailed view of each user's passkeys
+- **Delete Management** - Remove passkeys as needed
+- **Search & Filter** - Easy navigation through user data
+
+### **Monitoring & Diagnostics**
+- **Real-time Status** - Plugin health and dependency status
+- **Environment Check** - PHP requirements and extension verification
+- **Database Status** - Table existence and connectivity verification
+- **Debug Tools** - Comprehensive troubleshooting information
+
+## 🔧 **Technical Specifications**
+
+### **Requirements**
+- **aMember Pro** 6.x or later
+- **PHP** 7.4+ (8.x recommended)
+- **Extensions**: OpenSSL, mbstring, JSON
+- **Database**: MySQL/MariaDB with aMember tables
+
+### **Security Features**
+- **WebAuthn Standard** - Full compliance with W3C WebAuthn specification
+- **FIDO2 Protocol** - Industry-standard authentication protocol
+- **Origin Validation** - Prevents cross-origin attacks
+- **User Verification** - Configurable biometric/PIN requirements
+- **Separate Admin Security** - Enhanced security for admin accounts
+
+### **Architecture**
+- **Single File Design** - Complete functionality in one PHP file
+- **Auto-dependency Management** - Composer packages installed automatically
+- **Database Integration** - Native aMember database integration
+- **Hook System** - Proper aMember plugin architecture
+- **AJAX Architecture** - Modern asynchronous interface
+
+## 🎨 **User Experience**
+
+### **Registration Process**
+- **One-Click Registration** - Simple passkey creation process
+- **Device Detection** - Automatic detection of available authenticators
+- **Friendly Naming** - Users can name their passkeys for easy identification
+- **Multiple Devices** - Support for multiple passkeys per user
+
+### **Login Experience**
+- **Passwordless Login** - No passwords required
+- **Quick Authentication** - Touch/face recognition or security key
+- **Fallback Support** - Works alongside existing authentication methods
+- **Cross-Device Support** - Use passkeys across different devices
+
+## 📈 **Benefits**
+
+### **For Users**
+- **Enhanced Security** - Stronger than passwords, immune to phishing
+- **Convenience** - No passwords to remember or type
+- **Speed** - Instant authentication with biometrics
+- **Privacy** - No shared secrets or trackable credentials
+
+### **For Administrators**
+- **Complete Visibility** - Full oversight of passkey usage
+- **Easy Management** - Simple tools for user and device management
+- **Enhanced Security** - Stronger authentication for admin accounts
+- **Reduced Support** - Fewer password-related support requests
+
+### **For Organizations**
+- **Future-Proof** - Industry-standard authentication technology
+- **Compliance** - Meets modern security requirements
+- **Cost-Effective** - Reduces authentication infrastructure needs
+- **User Satisfaction** - Improved user experience and security
+
+## 🛡️ **Security**
+
+This plugin implements the full WebAuthn/FIDO2 specification with:
+- **Origin verification** to prevent cross-origin attacks
+- **Challenge-response authentication** with cryptographic signatures
+- **Public key cryptography** for secure credential storage
+- **User verification** requirements (biometric/PIN)
+- **Separate admin security policies** with enhanced requirements
+
+## 📞 **Support**
+
+- **Self-Contained Design** - Minimal dependencies, easy troubleshooting
+- **Built-in Diagnostics** - Comprehensive status and debug tools
+- **Complete Documentation** - Integrated help and status information
+- **Professional Implementation** - Production-ready with proper error handling
 
 ## 🚀 Quick Installation
 
@@ -42,7 +189,7 @@ A modern, passwordless authentication plugin for aMember Pro that enables users 
 ## 🎯 Requirements
 
 - **aMember Pro** (any recent version)
-- **PHP 8.0+** 
+- **PHP 7.4+** 
 - **HTTPS enabled** (required for WebAuthn security)
 - **Modern browser** (Chrome 67+, Firefox 60+, Safari 14+, Edge 18+)
 
@@ -73,53 +220,6 @@ Navigate to **Configuration** → **Setup/Configuration** → **Passkey Login**:
 ---
 
 ## 👥 User Experience
-
-## 👑 Administrator Passkey Support
-
-This plugin provides comprehensive passkey support for aMember administrators with enhanced security features.
-
-### Admin Features
-
-- **🔒 Separate Admin Security** - Admin passkeys use stricter WebAuthn settings by default
-- **🗃️ Dedicated Database Table** - Admin passkeys stored in separate table (`passkey_admin_credentials`)
-- **⚙️ Configurable Security Levels** - Different settings for admin vs member accounts
-- **🔄 Passkey Copy Feature** - Copy existing passkeys from member account to admin account
-- **🎛️ Admin Profile Integration** - Full passkey management from admin interface
-
-### Admin Configuration Options
-
-In the plugin configuration, administrators can:
-
-- **Enable Admin Passkeys** - Toggle admin passkey functionality
-- **Separate Admin Configuration** - Use different WebAuthn settings for admins
-- **Enhanced Security Settings**:
-  - Timeout: 30 seconds (vs 60 for members) 
-  - User Verification: Required (vs Preferred for members)
-  - Resident Key: Required (vs Preferred for members)
-  - Attestation: Direct (vs None for members)
-  - Authenticator Attachment: Platform preferred (built-in biometrics)
-
-### Admin Usage
-
-#### Registration
-1. Enable admin passkeys in plugin configuration
-2. Admin users can register passkeys through:
-   - Admin profile interface
-   - Copy from existing member account (if enabled)
-
-#### Login
-1. Visit admin login page
-2. Click "Login with Passkey" button
-3. Use biometric authentication or security key
-4. Automatically redirected to admin dashboard
-
-#### Management
-- View all registered admin passkeys
-- Delete individual passkeys
-- Copy passkeys from member accounts
-- Rename passkeys for better organization
-
-## 👤 Member Passkey Usage
 
 ### For Users - Registration
 1. **Log in to member area**

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Passkey Button Test</title>
+</head>
+<body>
+    <h2>Test Admin Login Form</h2>
+    <form method="post" action="/admin">
+        <div>
+            <label for="login">Username:</label>
+            <input type="text" id="login" name="login" required>
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <div>
+            <button type="submit">Login</button>
+        </div>
+    </form>
+
+    <script>
+// Test the exact same JavaScript that's being injected
+(function() {
+    console.log("🔐 TEST: Passkey script loading...");
+    
+    // Simple test injection
+    function injectAdminPasskeyLogin() {
+        console.log("🔐 TEST: injectAdminPasskeyLogin called");
+        
+        // Check if already exists
+        if (document.getElementById("passkey-admin-login")) {
+            console.log("✅ TEST: Passkey button already exists");
+            return;
+        }
+        
+        // Create the passkey login container
+        const passkeyDiv = document.createElement("div");
+        passkeyDiv.id = "passkey-admin-login";
+        passkeyDiv.style.cssText = `
+            position: relative;
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px solid #007cba;
+            border-radius: 8px;
+            background: #f8f9fa;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            max-width: 280px;
+            font-family: Arial, sans-serif;
+        `;
+        
+        passkeyDiv.innerHTML = `
+            <h4 style="margin-top: 0; color: #007cba; font-size: 16px;">🔐 TEST: Admin Passkey Login</h4>
+            <p style="margin-bottom: 15px; color: #666; font-size: 12px;">This is a test of the passkey button injection</p>
+            <button id="adminPasskeyLoginBtn" type="button" style="background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; width: 100%; font-weight: bold;">
+                🔑 TEST: Login with Passkey
+            </button>
+            <div id="adminPasskeyStatus" style="margin-top: 10px; font-size: 11px;">Test button created successfully!</div>
+        `;
+        
+        // Find login form
+        const loginForm = document.querySelector('form');
+        if (loginForm) {
+            console.log("✅ TEST: Found login form, inserting passkey button");
+            loginForm.parentNode.insertBefore(passkeyDiv, loginForm.nextSibling);
+        } else {
+            console.log("⚠️ TEST: No form found, appending to body");
+            document.body.appendChild(passkeyDiv);
+        }
+        
+        // Add test click handler
+        const loginBtn = document.getElementById("adminPasskeyLoginBtn");
+        if (loginBtn) {
+            loginBtn.addEventListener("click", function() {
+                const statusDiv = document.getElementById("adminPasskeyStatus");
+                statusDiv.innerHTML = '<div style="color: #28a745;">✅ TEST: Button clicked! JavaScript is working.</div>';
+                console.log("🔐 TEST: Passkey button clicked!");
+            });
+        }
+    }
+    
+    // Try injection immediately
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', injectAdminPasskeyLogin);
+    } else {
+        injectAdminPasskeyLogin();
+    }
+    
+    // Also try after delays
+    setTimeout(injectAdminPasskeyLogin, 500);
+    setTimeout(injectAdminPasskeyLogin, 1000);
+    setTimeout(injectAdminPasskeyLogin, 2000);
+    
+})();
+    </script>
+</body>
+</html>

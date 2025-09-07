@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Administrator Login</title>
+</head>
+<body class="am-admin">
+    <h1>Administrator Login</h1>
+    <form method="post" action="/admin">
+        <input type="text" name="login" placeholder="Username">
+        <input type="password" name="pass" placeholder="Password">
+        <input type="submit" value="Login">
+    </form>
+
+    <script>
+        console.log("=== PASSKEY DETECTION DEBUG ===");
+        console.log("URL:", window.location.href);
+        console.log("Title:", document.title);
+        console.log("Body classes:", document.body.className);
+        
+        // Check for logged-in indicators (same as plugin)
+        const loggedInIndicators = [
+            // Navigation elements that only appear when logged in
+            document.querySelector('nav.am-admin-nav'),
+            document.querySelector('.am-admin-menu'),
+            document.querySelector('#am-admin-sidebar'),
+            document.querySelector('.admin-navigation'),
+            // Dashboard elements
+            document.querySelector('.am-dashboard'),
+            document.querySelector('#dashboard'),
+            // User info in header (logged-in admin shows user info)
+            document.querySelector('.admin-user-info'),
+            document.querySelector('.am-admin-user'),
+            // Logout links only appear when logged in
+            document.querySelector('a[href*="logout"]'),
+            document.querySelector('a[href*="signout"]'),
+            // Admin content areas that only exist when logged in
+            document.querySelector('.am-admin-content'),
+            document.querySelector('#admin-content'),
+            // Breadcrumbs (usually only on logged-in pages)
+            document.querySelector('.am-breadcrumb'),
+            document.querySelector('.breadcrumb')
+        ];
+        
+        const hasLoggedInElements = loggedInIndicators.some(el => el !== null);
+        const foundElements = loggedInIndicators.filter(el => el !== null);
+        
+        console.log("Logged-in indicators found:", foundElements.length);
+        console.log("Found elements:", foundElements);
+        console.log("Has logged-in elements:", hasLoggedInElements);
+        
+        // URL checks
+        const urlPatterns = {
+            isRootAdmin: window.location.pathname === '/admin' || window.location.pathname === '/admin/',
+            hasLoginInUrl: /login|signin|auth/.test(window.location.href.toLowerCase()),
+            hasAdminSubPath: /\/admin\/[^\/]+/.test(window.location.pathname)
+        };
+        
+        console.log("URL patterns:", urlPatterns);
+        
+        // Final decision
+        const shouldAbort = hasLoggedInElements || urlPatterns.hasAdminSubPath;
+        console.log("Should abort passkey injection:", shouldAbort);
+        
+        if (!shouldAbort) {
+            console.log("✅ This appears to be a login page - passkey should show");
+        } else {
+            console.log("❌ This appears to be logged-in interface - passkey should NOT show");
+        }
+    </script>
+</body>
+</html>

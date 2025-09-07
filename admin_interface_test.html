@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>aMember Admin Interface Test</title>
+</head>
+<body class="am-admin">
+    <h2>Simulated aMember Admin Interface</h2>
+    <p>This page simulates what your admin interface looks like after login.</p>
+    
+    <!-- This form would normally trigger the passkey button -->
+    <form method="get" action="/admin-users">
+        <input type="text" name="search" placeholder="Search users">
+        <input type="password" name="password" placeholder="This is just for testing">
+        <button type="submit">Search</button>
+    </form>
+
+    <script>
+// Test the fixed passkey detection
+(function() {
+    console.log("🔐 TEST: Passkey script loading for admin interface test...");
+    
+    function testAdminDetection() {
+        console.log("🔐 TEST: Testing admin interface detection");
+        
+        // Check body class
+        const hasAdminClass = document.body.className.includes('am-admin');
+        console.log("Body has am-admin class:", hasAdminClass);
+        
+        // FIRST CHECK: Abort immediately if this is aMember admin interface
+        if (document.body && document.body.className.includes('am-admin')) {
+            console.log("✅ TEST SUCCESS: aMember admin interface detected (body.am-admin) - ABORTING passkey injection");
+            return;
+        }
+        
+        console.log("❌ TEST FAILED: Should have detected admin interface and aborted");
+    }
+    
+    // Run test
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', testAdminDetection);
+    } else {
+        testAdminDetection();
+    }
+    
+})();
+    </script>
+</body>
+</html>

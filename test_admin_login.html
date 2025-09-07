@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Login Test</title>
+</head>
+<body>
+    <h2>Admin Login</h2>
+    <form method="post" action="/admin">
+        <div>
+            <label for="login">Username:</label>
+            <input type="text" id="login" name="login" required>
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <div>
+            <button type="submit">Login</button>
+        </div>
+    </form>
+
+    <!-- Test passkey script injection by simulating what the PHP script would output -->
+    <script>
+    // Simulate the admin passkey script
+    window.location.href = "file:///admin";  // Make it think it's an admin page
+    </script>
+
+    <!-- Include the admin passkey script directly for testing -->
+    <script>
+(function() {
+    // Prevent multiple script executions
+    if (window.adminPasskeyScriptLoaded) {
+        console.log("🔐 Admin passkey script already loaded, skipping");
+        return;
+    }
+    window.adminPasskeyScriptLoaded = true;
+    
+    // Global admin passkey detector and injector - ENHANCED VERSION
+    console.log("🔐 Admin passkey script loading... (Enhanced Detection)");
+    
+    // Wait for DOM to be ready before accessing elements
+    function ensureDOMReady(callback) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', callback);
+        } else {
+            callback();
+        }
+    }
+    
+    ensureDOMReady(function() {
+        console.log("Current URL:", window.location.href);
+        console.log("Page title:", document.title);
+        console.log("Body classes:", document.body ? document.body.className : 'body not ready');
+        
+        // Only proceed if body exists
+        if (!document.body) {
+            console.log("❌ Body not ready, skipping injection");
+            return;
+        }
+        
+        detectAndInjectAdminLogin();
+    });
+    
+    function detectAndInjectAdminLogin() {
+        // ENHANCED DETECTION - Multiple criteria, more aggressive
+        
+        // URL-based detection
+        const url = window.location.href.toLowerCase();
+        const urlChecks = {
+            hasAdmin: url.includes("admin"),
+            hasLogin: url.includes("login"),
+            hasAuth: url.includes("auth"),
+            hasAdminPath: url.includes("/admin"),
+            hasAdminQuery: url.includes("admin=") || url.includes("admin_"),
+        };
+        
+        // Page content detection
+        const title = document.title.toLowerCase();
+        const bodyText = document.body.textContent.toLowerCase();
+        const contentChecks = {
+            titleHasAdmin: title.includes("admin"),
+            titleHasLogin: title.includes("login"),
+            bodyHasAdminLogin: bodyText.includes("admin") && bodyText.includes("login"),
+            bodyClassAdmin: document.body.className.toLowerCase().includes("admin"),
+        };
+        
+        // Form detection
+        const formChecks = {
+            hasForm: !!document.querySelector("form"),
+            hasPasswordInput: !!document.querySelector("input[type=password]"),
+            hasLoginInput: !!document.querySelector("input[name*=login], input[id*=login]"),
+            hasAdminInput: !!document.querySelector("input[name*=admin], input[id*=admin]"),
+            hasAdminForm: !!document.querySelector("form[action*=admin]"),
+            hasUsernameInput: !!document.querySelector("input[name*=user], input[id*=user], input[name*=name]"),
+        };
+        
+        // Simple check for logged-in state - look for obvious admin interface elements
+        const isAlreadyLoggedIn = !!document.querySelector("a[href*=logout], a[href*=signout], button[onclick*=logout]");
+        
+        // Log all detection criteria
+        console.log("🔍 URL checks:", urlChecks);
+        console.log("🔍 Content checks:", contentChecks);
+        console.log("🔍 Form checks:", formChecks);
+        console.log("🔍 Already logged in:", isAlreadyLoggedIn);
+        
+        // Determine if this looks like an admin login page
+        const isAdminContext = Object.values(urlChecks).some(Boolean) || 
+                              Object.values(contentChecks).some(Boolean);
+        
+        const isLoginPage = formChecks.hasForm && 
+                           (formChecks.hasPasswordInput || formChecks.hasLoginInput);
+        
+        // Only inject if it's a login context AND user is NOT already logged in
+        const shouldInject = (isAdminContext || isLoginPage || 
+                             // Force injection on any page with "admin" or forms WITH password fields
+                             (url.includes("admin") && formChecks.hasPasswordInput) || 
+                             (formChecks.hasForm && formChecks.hasPasswordInput)) && 
+                             !document.getElementById("passkey-admin-login") &&
+                             !isAlreadyLoggedIn; // Don't inject if already logged in
+        
+        console.log("🎯 Final decision:");
+        console.log("  - Admin context:", isAdminContext);
+        console.log("  - Login page:", isLoginPage);
+        console.log("  - Already logged in:", isAlreadyLoggedIn);
+        console.log("  - Should inject:", shouldInject);
+        
+        if (shouldInject) {
+            console.log("✅ Injecting admin passkey login button");
+            injectAdminPasskeyLogin();
+        } else {
+            console.log("❌ Not injecting - criteria not met");
+        }
+    }
+    
+    function injectAdminPasskeyLogin() {
+        // Create the passkey login container
+        const passkeyDiv = document.createElement("div");
+        passkeyDiv.id = "passkey-admin-login";
+        passkeyDiv.style.cssText = `
+            position: relative;
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px solid #007cba;
+            border-radius: 8px;
+            background: #f8f9fa;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            max-width: 280px;
+            font-family: Arial, sans-serif;
+        `;
+        
+        passkeyDiv.innerHTML = `
+            <h4 style="margin-top: 0; color: #007cba; font-size: 16px;">🔐 Admin Passkey Login</h4>
+            <p style="margin-bottom: 15px; color: #666; font-size: 12px;">Use your registered passkey for admin authentication</p>
+            <button id="adminPasskeyLoginBtn" type="button" style="background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; width: 100%; font-weight: bold;">
+                🔑 Login with Passkey
+            </button>
+            <div id="adminPasskeyStatus" style="margin-top: 10px; font-size: 11px;">TEST MODE - Button injected successfully!</div>
+        `;
+        
+        // Find login form and insert below it
+        const loginForm = document.querySelector('form[action*="admin"], form[method="post"], input[name="login"], input[type="password"]')?.closest('form');
+        if (loginForm) {
+            console.log("✅ Found login form, inserting passkey button below it");
+            loginForm.parentNode.insertBefore(passkeyDiv, loginForm.nextSibling);
+        } else {
+            console.log("❌ No login form found - not injecting passkey button to avoid interfering with page");
+            return;
+        }
+        
+        // Add test click handler
+        const loginBtn = document.getElementById("adminPasskeyLoginBtn");
+        const statusDiv = document.getElementById("adminPasskeyStatus");
+        
+        loginBtn.addEventListener("click", function() {
+            statusDiv.innerHTML = '<div style="color: #28a745; margin: 5px 0;">✅ Test button works! (In real use, this would trigger passkey authentication)</div>';
+        });
+    }
+    
+})();
+    </script>
+</body>
+</html>

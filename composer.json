@@ -1,0 +1,14 @@
+{
+    "name": "kumpeapps/amember-passkey-plugin",
+    "description": "Passkey authentication plugin for aMember Pro",
+    "type": "library",
+    "require": {
+        "php": ">=7.4",
+        "web-auth/webauthn-lib": "^5.2"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "prefer-stable": true
+    },
+    "minimum-stability": "stable"
+}
