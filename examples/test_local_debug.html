@@ -69,16 +69,19 @@
             document.getElementById('test-output').innerHTML = '';
             log('🔍 Testing multiple API endpoints...', 'info');
             
+            // aMember installation is at www.kumpeapps.com
+            const amemberDomain = 'https://www.kumpeapps.com';
+            
             const endpoints = [
+                `${amemberDomain}/api/passkey/config`,
+                `${amemberDomain}/api/passkey-config`, 
+                `${amemberDomain}/misc/passkey?action=config`,
+                `${amemberDomain}/misc/passkey`,
+                `${amemberDomain}/api/`,
+                `${amemberDomain}/admin/`,
+                // Test local relative paths (these will 404 as expected)
                 '/api/passkey/config',
-                '/api/passkey-config', 
-                '/misc/passkey?action=config',
-                '/misc/passkey',
-                '/api/',
-                '/admin/',
-                // Test if it's a local development setup
-                'http://localhost/api/passkey/config',
-                'http://localhost/amember/api/passkey/config'
+                '/misc/passkey?action=config'
             ];
             
             for (const endpoint of endpoints) {
@@ -130,13 +133,16 @@
             document.getElementById('test-output').innerHTML = '';
             log('🔍 Testing plugin-specific paths...', 'info');
             
+            // aMember installation is at www.kumpeapps.com
+            const amemberDomain = 'https://www.kumpeapps.com';
+            
             const pluginPaths = [
-                '/misc/passkey?_plugin=passkey&_action=test',
-                '/misc/passkey?action=test',
-                '/misc/passkey?action=status',
-                '/misc/passkey?action=debug',
-                '/plugins/misc/passkey/passkey.php',
-                '/application/default/plugins/misc/passkey/passkey.php'
+                `${amemberDomain}/misc/passkey?_plugin=passkey&_action=test`,
+                `${amemberDomain}/misc/passkey?action=test`,
+                `${amemberDomain}/misc/passkey?action=status`,
+                `${amemberDomain}/misc/passkey?action=debug`,
+                `${amemberDomain}/plugins/misc/passkey/passkey.php`,
+                `${amemberDomain}/application/default/plugins/misc/passkey/passkey.php`
             ];
             
             for (const path of pluginPaths) {

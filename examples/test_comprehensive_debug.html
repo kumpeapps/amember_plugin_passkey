@@ -3,7 +3,17 @@
 <head>
     <title>🎯 Comprehensive API Debug Suite</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        body { font-family: Arial, sans-serif; margin: 40px; background        async function testDirectPlugin() {
+            const outputId = 'direct-output';
+            document.getElementById(outputId).innerHTML = '';
+            
+            log('🎪 Starting Direct Plugin Test...', 'info', outputId);
+            updateStatus('direct', 'Testing...', 'warning');
+            
+            try {
+                // aMember installation is at www.kumpeapps.com
+                const testUrl = 'https://www.kumpeapps.com/test_direct_plugin_call.php';
+                log(`🔗 Calling plugin method directly via ${testUrl}...`, 'info', outputId);; }
         .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .test-section { background: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #dee2e6; }
         .debug-log { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 5px; font-family: monospace; white-space: pre-wrap; overflow-x: auto; margin: 10px 0; max-height: 400px; overflow-y: auto; }
@@ -118,9 +128,11 @@
             updateStatus('enhanced', 'Testing...', 'warning');
             
             try {
-                log('📡 Calling /api/passkey/config with enhanced debugging...', 'info', outputId);
+                // aMember installation is at www.kumpeapps.com
+                const apiUrl = 'https://www.kumpeapps.com/api/passkey/config';
+                log(`📡 Calling ${apiUrl} with enhanced debugging...`, 'info', outputId);
                 
-                const response = await fetch('/api/passkey/config', {
+                const response = await fetch(apiUrl, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -171,7 +183,7 @@
             try {
                 log('🔗 Calling plugin method directly via test_direct_plugin_call.php...', 'info', outputId);
                 
-                const response = await fetch('/test_direct_plugin_call.php', {
+                const response = await fetch(testUrl, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json'
@@ -213,10 +225,13 @@
             log('🔍 Starting API Routing Analysis...', 'info', outputId);
             updateStatus('routing', 'Testing...', 'warning');
             
+            // aMember installation is at www.kumpeapps.com
+            const amemberDomain = 'https://www.kumpeapps.com';
+            
             const endpoints = [
-                '/api/passkey/config',
-                '/api/passkey-config',
-                '/misc/passkey?action=config'
+                `${amemberDomain}/api/passkey/config`,
+                `${amemberDomain}/api/passkey-config`,
+                `${amemberDomain}/misc/passkey?action=config`
             ];
             
             let successCount = 0;
