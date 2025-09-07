@@ -56,6 +56,33 @@ Configuration template for:
 
 6. **Test Authentication**: Open the example page and click "Sign in with Passkey"
 
+## Troubleshooting
+
+### 404 Error on api_proxy.php
+
+If you get a 404 error:
+
+1. **Check File Location**: Ensure `api_proxy.php` is in the same directory as your HTML file
+2. **Test Directly**: Open `test_api_proxy.html` in your browser to verify the proxy is accessible
+3. **Check Web Server**: Make sure your web server serves PHP files correctly
+4. **File Permissions**: Ensure the PHP file has proper read permissions
+
+### Missing API Permission
+
+If "login-by-passkey" doesn't appear in aMember API permissions:
+
+1. **Enable Plugin**: Make sure the passkey plugin is enabled in aMember admin
+2. **Plugin Version**: Ensure you have the latest version with API endpoint registration
+3. **Clear Cache**: Clear aMember cache and refresh the API permissions page
+4. **Check Logs**: Look in aMember error logs for plugin initialization errors
+
+### Configuration Issues
+
+1. **Copy config.example.php**: Make sure you copied it to `config.php`
+2. **Update Values**: Verify all configuration values are correct
+3. **API Key**: Generate a new API key in aMember if needed
+4. **HTTPS**: Ensure both aMember and your proxy use HTTPS
+
 ## Security Features
 
 ### API Key Protection

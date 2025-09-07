@@ -78,15 +78,18 @@ class Am_Plugin_Passkey extends Am_Plugin
         
         // Ensure Composer dependencies are installed
         $this->ensureComposerDependencies();
+        
+        // Register REST API endpoint
+        Am_Di::getInstance()->hook->add('apiCheckAccessByPasskey', array($this, 'onApiCheckAccessByPasskey'));
     }
     
     /**
-     * REST API endpoint: /api/passkey-check-access
+     * REST API endpoint: /api/check-access/by-passkey
      * Verifies user access using passkey (WebAuthn/FIDO2) credentials.
      * Request: POST with JSON { credential: { ... } }
      * Response: { ok: true, user_id: ..., name: ..., email: ..., access: true, error: null }
      */
-    public function onApiPasskeyCheckAccess($event)
+    public function onApiCheckAccessByPasskey($event)
         {
             $request = $event->getRequest();
             $response = $event->getResponse();

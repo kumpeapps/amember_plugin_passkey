@@ -17,6 +17,9 @@ application/default/plugins/misc/passkey/vendor/
 # Any .sql files created by the plugin
 application/default/plugins/misc/passkey/*.sql
 
+# Configuration files with sensitive data
+examples/config.php
+
 ### dotenv ###
 .env
 
