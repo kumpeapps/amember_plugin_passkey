@@ -1,25 +1,28 @@
 <?php
 /**
- * Secure Passkey Authentication Endpoint
+ * Secure Passkey Authentication Proxy
  * 
- * This script securely handles passkey authentication without exposing API keys to the client.
- * The API key is stored server-side and never sent to the browser.
+ * This file keeps API keys secure on the server and provides a safe
+ * interface for client-side passkey authentication.
+ * 
+ * SECURITY: API keys are never exposed to client-side code.
  */
 
-// Load configuration from external file
+// Load configuration
 $configFile = __DIR__ . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(500);
-    echo json_encode(['error' => 'Configuration file not found. Copy config.example.php to config.php']);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Configuration file not found. Copy config.example.php to config.php and configure it.']);
     exit;
 }
 
-$config = require $configFile;
+require_once $configFile;
 
-// CORS headers for frontend access
-header('Access-Control-Allow-Origin: ' . $config['cors_origin']);
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+// CORS Headers for cross-origin requests
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, X-Requested-With');
 header('Content-Type: application/json');
 
 // Handle preflight OPTIONS request
@@ -28,97 +31,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Only allow POST requests
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['error' => 'Method not allowed']);
-    exit;
+/**
+ * Make API request to aMember with error handling
+ */
+function makeApiRequest($endpoint, $data = null, $method = 'GET') {
+    $url = rtrim(AMEMBER_URL, '/') . $endpoint;
+    
+    $options = [
+        'http' => [
+            'method' => $method,
+            'header' => [
+                'X-API-Key: ' . AMEMBER_API_KEY,
+                'Content-Type: application/json'
+            ],
+            'timeout' => 30
+        ]
+    ];
+    
+    if ($data && $method === 'POST') {
+        $options['http']['content'] = json_encode($data);
+    }
+    
+    $context = stream_context_create($options);
+    $response = @file_get_contents($url, false, $context);
+    
+    if ($response === false) {
+        return ['error' => 'Failed to connect to aMember API'];
+    }
+    
+    $decoded = json_decode($response, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        return ['error' => 'Invalid JSON response from API'];
+    }
+    
+    return $decoded;
 }
 
-try {
-    // Get request data
-    $input = file_get_contents('php://input');
-    $data = json_decode($input, true);
+/**
+ * Get passkey configuration from aMember
+ */
+function getPasskeyConfig() {
+    $endpoints = [
+        '/api/passkey/config',
+        '/api/passkey-config',
+        '/misc/passkey?action=config'
+    ];
     
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new Exception('Invalid JSON in request');
+    foreach ($endpoints as $endpoint) {
+        $result = makeApiRequest($endpoint, null, 'GET');
+        if (isset($result['ok']) && $result['ok']) {
+            return $result;
+        }
     }
     
-    if (!isset($data['credential'])) {
-        throw new Exception('Missing credential in request');
-    }
-    
-    // Try multiple API endpoints with server-side API key
+    // Fallback configuration if API endpoint not available
+    return [
+        'ok' => true,
+        'rpId' => parse_url(AMEMBER_URL, PHP_URL_HOST),
+        'rpName' => 'aMember',
+        'timeout' => 60000,
+        'userVerification' => 'preferred',
+        'attestation' => 'none',
+        'endpoints' => [
+            'config' => '/api/passkey/config',
+            'authenticate' => '/api/check-access/by-passkey'
+        ]
+    ];
+}
+
+/**
+ * Authenticate user with passkey credential
+ */
+function authenticatePasskey($credentialData) {
     $endpoints = [
         '/api/check-access/by-passkey',
-        '/api/check-access-by-passkey', 
+        '/api/check-access-by-passkey',
         '/api/passkey-check-access',
         '/misc/passkey?action=check-access'
     ];
     
-    $requestData = [
-        'credential' => $data['credential']
-    ];
-    
-    $lastError = '';
     foreach ($endpoints as $endpoint) {
-        $testUrl = $config['amember_base_url'] . $endpoint;
+        $result = makeApiRequest($endpoint, ['credential' => $credentialData], 'POST');
         
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $testUrl,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode($requestData),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'X-API-Key: ' . $config['api_key'], // API key stays server-side
-                'Accept: application/json'
-            ],
-            CURLOPT_TIMEOUT => $config['timeout'],
-            CURLOPT_SSL_VERIFYPEER => $config['verify_ssl'],
-            CURLOPT_SSL_VERIFYHOST => $config['verify_ssl'] ? 2 : 0,
-            CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_MAXREDIRS => 0
-        ]);
+        if (isset($result['ok']) && $result['ok']) {
+            return $result;
+        }
         
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-        
-        if (!$curlError && $httpCode === 200) {
-            // Check if response is valid JSON
-            $responseData = json_decode($response, true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                // Success! Return the response
-                echo $response;
-                exit;
-            } else {
-                $lastError = "Endpoint $endpoint: Invalid JSON response";
-            }
-        } else {
-            $lastError = "Endpoint $endpoint: HTTP $httpCode" . ($curlError ? " - $curlError" : "");
+        // If we get a meaningful error (not just connection failure), return it
+        if (isset($result['error']) && !in_array($result['error'], ['Failed to connect to aMember API', 'Invalid JSON response from API'])) {
+            return $result;
         }
     }
     
-    // If we get here, all endpoints failed
-    throw new Exception('All API endpoints failed. Last error: ' . $lastError);
-    
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'ok' => false,
-        'error' => $e->getMessage(),
-        'user_id' => null,
-        'name' => null,
-        'email' => null,
-        'access' => false,
-        'debug_info' => [
-            'endpoints_tested' => isset($endpoints) ? count($endpoints) : 0,
-            'has_config' => !empty($config['amember_base_url']),
-            'has_api_key' => !empty($config['api_key'])
-        ]
-    ]);
+    return ['error' => 'All authentication endpoints failed', 'ok' => false];
+}
+
+// Handle different actions
+$action = $_GET['action'] ?? $_POST['action'] ?? 'config';
+
+switch ($action) {
+    case 'config':
+        // Get passkey configuration
+        $config = getPasskeyConfig();
+        echo json_encode($config);
+        break;
+        
+    case 'authenticate':
+        // Handle passkey authentication
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            break;
+        }
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!isset($input['credential'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Missing credential data']);
+            break;
+        }
+        
+        $result = authenticatePasskey($input['credential']);
+        echo json_encode($result);
+        break;
+        
+    default:
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid action']);
 }
 ?>

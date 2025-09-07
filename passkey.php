@@ -103,7 +103,7 @@ class Am_Plugin_Passkey extends Am_Plugin
     }
     
     /**
-     * Handle API routing for check-access/by-passkey
+     * Handle API routing for passkey endpoints
      */
     public function onApiRoute($event)
     {
@@ -112,17 +112,22 @@ class Am_Plugin_Passkey extends Am_Plugin
         
         error_log('Passkey Plugin: API Route called with path: ' . $path);
         
+        // Check API permissions using existing by-login-pass permission
+        $apiKey = $request->getParam('_key') ?: $request->getHeader('X-API-Key');
+        if (!$this->checkApiPermission($apiKey, 'by-login-pass')) {
+            $event->setReturn(array('error' => 'Access denied', 'code' => 403));
+            $event->stopPropagation();
+            return;
+        }
+        
         if (preg_match('#^/api/check-access/by-passkey/?$#', $path)) {
-            // Check API permissions using existing by-login-pass permission
-            $apiKey = $request->getParam('_key') ?: $request->getHeader('X-API-Key');
-            if (!$this->checkApiPermission($apiKey, 'by-login-pass')) {
-                $event->setReturn(array('error' => 'Access denied', 'code' => 403));
-                $event->stopPropagation();
-                return;
-            }
-            
-            // Handle the request
+            // Handle passkey authentication
             $result = $this->handlePasskeyCheckAccess($request);
+            $event->setReturn($result);
+            $event->stopPropagation();
+        } elseif (preg_match('#^/api/passkey/config/?$#', $path)) {
+            // Handle passkey configuration request
+            $result = $this->handlePasskeyConfig($request);
             $event->setReturn($result);
             $event->stopPropagation();
         }
@@ -207,6 +212,46 @@ class Am_Plugin_Passkey extends Am_Plugin
                 'name' => null,
                 'email' => null,
                 'access' => false
+            ];
+        }
+    }
+
+    /**
+     * Handle the passkey configuration request
+     */
+    protected function handlePasskeyConfig($request)
+    {
+        try {
+            $config = Am_Di::getInstance()->config;
+            $hostname = $_SERVER['HTTP_HOST'];
+            
+            // Get configuration from aMember admin settings
+            $passkeyConfig = [
+                'ok' => true,
+                'rpId' => $hostname,
+                'rpName' => $config->get('site_title', 'aMember'),
+                'timeout' => (int)$config->get('misc.passkey.timeout', 60000),
+                'userVerification' => $config->get('misc.passkey.user_verification', 'preferred'),
+                'authenticatorAttachment' => $config->get('misc.passkey.authenticator_attachment', null),
+                'requireResidentKey' => (bool)$config->get('misc.passkey.require_resident_key', false),
+                'attestation' => $config->get('misc.passkey.attestation', 'none'),
+                'endpoints' => [
+                    'config' => '/api/passkey/config',
+                    'authenticate' => '/api/check-access/by-passkey'
+                ]
+            ];
+            
+            // Remove null values
+            $passkeyConfig = array_filter($passkeyConfig, function($value) {
+                return $value !== null;
+            });
+            
+            return $passkeyConfig;
+            
+        } catch (Exception $e) {
+            return [
+                'ok' => false,
+                'error' => 'Failed to get configuration: ' . $e->getMessage()
             ];
         }
     }

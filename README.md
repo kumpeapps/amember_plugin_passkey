@@ -107,6 +107,59 @@ copy all files from this repository to `/path/to/amember/application/default/plu
 - **Biometric authentication support**
 - **HTTPS required**
 
+## 🔧 **Integration Examples**
+
+The `/examples` folder contains complete integration examples for using the passkey authentication API:
+
+### 🛡️ **Secure Implementation (Recommended)**
+
+- **`passkey_login_secure.html`** - Secure frontend implementation
+- **`secure_passkey_auth.php`** - Secure server-side proxy that protects API keys
+- **`passkey_login_example.html`** - Auto-detecting proxy version
+
+### ⚠️ **Important Security Warning**
+
+- **`passkey_login_direct.html`** - **CONTAINS SECURITY WARNING** - Do not use this approach
+- **Never expose API keys in client-side JavaScript code**
+- **Always use server-side proxies for API authentication**
+- **Store sensitive configuration only on the server**
+
+### 📡 **API Endpoints**
+
+The plugin provides REST API endpoints at:
+
+**Configuration Endpoint:**
+
+```http
+GET /api/passkey/config
+```
+
+Returns WebAuthn configuration settings from aMember admin including:
+
+- Relying Party ID and Name
+- Timeout settings
+- User verification requirements
+- Authenticator attachment preferences
+- Attestation settings
+
+**Authentication Endpoint:**
+
+```http
+POST /api/check-access/by-passkey
+```
+
+Verifies passkey credentials and returns user access information.
+
+Both endpoints require:
+
+- Valid API key with `by-login-pass` permission
+- HTTPS connection
+- Proper WebAuthn credential data (for authentication endpoint)
+
+**The secure examples automatically fetch configuration from aMember, eliminating the need for manual setup.**
+
+**For production use, always implement the secure server-side proxy pattern shown in the examples.**
+
 ## 🐛 **Troubleshooting**
 
 - Ensure HTTPS is enabled
@@ -118,7 +171,7 @@ copy all files from this repository to `/path/to/amember/application/default/plu
 
 ### File Structure
 
-```
+```text
 passkey/
 ├── passkey.php           # Main plugin file
 ├── composer.json         # Dependency definitions (installed automatically when plugin is enabled)
