@@ -46,58 +46,15 @@
     </div>
 
     <script>
-        async function testUpdatedEndpoint() {
-            const resultsDiv = document.getElementById('updated-test-results');
-            resultsDiv.innerHTML = '<p>Testing updated configuration endpoint...</p>';
+        async function testConfigEndpoint() {
+            const output = document.getElementById('output');
+            output.innerHTML = '<div class="status">🔍 Testing configuration endpoint...</div>';
             
             try {
-                // Test the secure proxy which will call the API
-                const response = await fetch('./secure_passkey_auth.php?action=config');
-                const text = await response.text();
+                // aMember installation is at www.kumpeapps.com
+                const apiUrl = 'https://www.kumpeapps.com/api/passkey/config';
                 
-                let data;
-                try {
-                    data = JSON.parse(text);
-                } catch (e) {
-                    resultsDiv.innerHTML = `
-                        <div class="error">Failed to parse JSON response:</div>
-                        <pre>${text}</pre>
-                    `;
-                    return;
-                }
-                
-                resultsDiv.innerHTML = `
-                    <h4>Updated Endpoint Response:</h4>
-                    <pre>${JSON.stringify(data, null, 2)}</pre>
-                `;
-                
-                if (data.ok === true && !data.debug) {
-                    resultsDiv.innerHTML += '<div class="success">🎉 SUCCESS! Configuration endpoint is now working!</div>';
-                } else if (data.ok === false) {
-                    resultsDiv.innerHTML += `
-                        <div class="error">❌ Still failing: ${data.error || 'Unknown error'}</div>
-                        <div class="warning">Check your aMember error logs for detailed debug information.</div>
-                    `;
-                } else if (data.fallback) {
-                    resultsDiv.innerHTML += '<div class="warning">⚠️ Still using fallback - API endpoint may have issues</div>';
-                }
-                
-                // Instructions
-                resultsDiv.innerHTML += `
-                    <div class="section" style="margin-top: 20px; padding: 15px; background: #e7f3ff; border: 1px solid #bee5eb;">
-                        <h4>Next Steps:</h4>
-                        <ol>
-                            <li>Check your aMember error logs for lines starting with "Passkey Plugin:"</li>
-                            <li>Look for the exact error message and line number</li>
-                            <li>Share the debug output to identify the root cause</li>
-                        </ol>
-                    </div>
-                `;
-                
-            } catch (error) {
-                resultsDiv.innerHTML = `<div class="error">Network error: ${error.message}</div>`;
-            }
-        }
+                const response = await fetch(apiUrl, {
     </script>
 </body>
 </html>
