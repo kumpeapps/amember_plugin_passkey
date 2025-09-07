@@ -192,6 +192,9 @@ passkey/
 - **Dynamic database table creation**
 - **Comprehensive error handling**
 - **Cross-browser WebAuthn compatibility**
+- **Cross-domain passkey support** with WebAuthn Related Origins
+- **Automatic .well-known file management** for related origins
+- **Enhanced admin configuration** with multiple save hook fallbacks
 
 ---
 

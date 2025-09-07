@@ -250,3 +250,4 @@ two-factor-hotp/
 composer.*
 config.php
 .env
+.well-known/

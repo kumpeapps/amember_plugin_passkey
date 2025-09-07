@@ -26,6 +26,7 @@ class Am_Plugin_Passkey extends Am_Plugin
     public function __construct($param1 = null, $param2 = null)
     {
         // ENHANCED DEBUGGING VERSION 2.0 - 2025-09-07
+        // NOTE: Temporary test/debug files should be removed after development
         error_log('Passkey Plugin: Constructor called - ENHANCED DEBUGGING VERSION 2.0');
         
         // Use simple default parameters
@@ -85,6 +86,14 @@ class Am_Plugin_Passkey extends Am_Plugin
         // Register configuration save hook to update well-known file
         Am_Di::getInstance()->hook->add('configSave', array($this, 'onConfigSave'));
         Am_Di::getInstance()->hook->add('setupFormsSave', array($this, 'onSetupFormsSave'));
+        
+        // Add additional hook names to catch different aMember save events
+        Am_Di::getInstance()->hook->add('saveConfig', array($this, 'onConfigSave'));
+        Am_Di::getInstance()->hook->add('configUpdate', array($this, 'onConfigSave'));
+        Am_Di::getInstance()->hook->add('setupFormSave', array($this, 'onSetupFormsSave'));
+        Am_Di::getInstance()->hook->add('adminConfigSave', array($this, 'onConfigSave'));
+        
+        error_log('Passkey Plugin: Configuration save hooks registered with multiple event names');
     }
     
     /**
