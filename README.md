@@ -1,3 +1,11 @@
+---
+
+> ![Built with AI](https://img.shields.io/badge/Built%20with-AI-blue?logo=githubcopilot)
+>
+> **This plugin was built with assistance from GitHub Copilot and AI-powered development tools.**
+
+---
+
 # 🔐 aMember Pro Passkey Authentication Plugin
 
 A comprehensive **single-file** WebAuthn/FIDO2 passkey authentication plugin for aMember Pro that provides modern passwordless authentication for users.
