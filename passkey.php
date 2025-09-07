@@ -914,6 +914,20 @@ class Am_Plugin_Passkey extends Am_Plugin
         if (strpos($currentUri, '/api/passkey/config') !== false) {
             error_log('Passkey Plugin: DIRECT API CALL detected - /api/passkey/config');
             
+            // Check API authentication before processing
+            $apiKey = isset($_GET['_key']) ? $_GET['_key'] : (isset($_SERVER['HTTP_X_API_KEY']) ? $_SERVER['HTTP_X_API_KEY'] : '');
+            error_log('Passkey Plugin: API Key provided: ' . ($apiKey ? 'YES' : 'NO'));
+            
+            if (!$this->checkApiPermission($apiKey, 'by-login-pass')) {
+                error_log('Passkey Plugin: API authentication FAILED for key: ' . substr($apiKey, 0, 10) . '...');
+                header('Content-Type: application/json');
+                http_response_code(403);
+                echo json_encode(['error' => 'Access denied', 'code' => 403]);
+                exit;
+            }
+            
+            error_log('Passkey Plugin: API authentication PASSED');
+            
             // Handle the API call directly since hooks might not be working
             try {
                 error_log('Passkey Plugin: Attempting direct API response');
@@ -930,6 +944,7 @@ class Am_Plugin_Passkey extends Am_Plugin
             } catch (Exception $e) {
                 error_log('Passkey Plugin: Direct API error: ' . $e->getMessage());
                 header('Content-Type: application/json');
+                http_response_code(500);
                 echo json_encode(['error' => 'Direct API error: ' . $e->getMessage()]);
                 exit;
             }
