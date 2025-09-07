@@ -175,6 +175,7 @@ class Am_Plugin_Passkey extends Am_Plugin
     protected function checkApiPermission($apiKey, $permission)
     {
         if (!$apiKey) {
+            error_log('Passkey Plugin: checkApiPermission - No API key provided');
             return false;
         }
         
@@ -182,13 +183,34 @@ class Am_Plugin_Passkey extends Am_Plugin
             $di = Am_Di::getInstance();
             $db = $di->db;
             
-            $row = $db->selectRow('SELECT * FROM ?_api_key WHERE api_key = ?', $apiKey);
+            error_log('Passkey Plugin: checkApiPermission - Looking up key: ' . substr($apiKey, 0, 10) . '...');
+            
+            // Use 'key' column instead of 'api_key' based on aMember database structure
+            $row = $db->selectRow('SELECT * FROM ?_api_key WHERE `key` = ?', $apiKey);
             if (!$row) {
+                error_log('Passkey Plugin: checkApiPermission - API key not found in database');
                 return false;
             }
             
-            $permissions = explode(',', $row['permissions']);
-            return in_array($permission, $permissions);
+            error_log('Passkey Plugin: checkApiPermission - Found API key record, checking permissions');
+            error_log('Passkey Plugin: checkApiPermission - Key permissions: ' . $row['perms']);
+            error_log('Passkey Plugin: checkApiPermission - Key is_disabled: ' . $row['is_disabled']);
+            
+            // Check if key is disabled
+            if ($row['is_disabled']) {
+                error_log('Passkey Plugin: checkApiPermission - API key is disabled');
+                return false;
+            }
+            
+            // Check permissions (stored in 'perms' column)
+            $permissions = explode(',', $row['perms']);
+            $hasPermission = in_array($permission, $permissions);
+            
+            error_log('Passkey Plugin: checkApiPermission - Required permission: ' . $permission);
+            error_log('Passkey Plugin: checkApiPermission - Available permissions: ' . implode(', ', $permissions));
+            error_log('Passkey Plugin: checkApiPermission - Has required permission: ' . ($hasPermission ? 'YES' : 'NO'));
+            
+            return $hasPermission;
             
         } catch (Exception $e) {
             error_log('Passkey Plugin: Error checking API permission: ' . $e->getMessage());
