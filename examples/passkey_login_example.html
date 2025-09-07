@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passkey Login Example - aMember Integration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .login-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .passkey-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin: 20px 0;
+            transition: all 0.3s ease;
+        }
+        .passkey-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .passkey-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .user-info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>🔐 Passkey Login Example</h1>
+        <p>This example demonstrates how to authenticate users with passkeys using the aMember Passkey Plugin API.</p>
+        
+        <div id="status"></div>
+        
+        <button id="passkeyLogin" class="passkey-button">
+            🔑 Sign in with Passkey
+        </button>
+        
+        <div id="userInfo" class="user-info" style="display: none;">
+            <h3>✅ Login Successful!</h3>
+            <p><strong>User ID:</strong> <span id="userId"></span></p>
+            <p><strong>Name:</strong> <span id="userName"></span></p>
+            <p><strong>Email:</strong> <span id="userEmail"></span></p>
+            <p><strong>Access:</strong> <span id="userAccess"></span></p>
+        </div>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+            <h3>How it works:</h3>
+            <ol>
+                <li>Click "Sign in with Passkey" to trigger WebAuthn authentication</li>
+                <li>Browser prompts for biometric/device authentication</li>
+                <li>Credential is sent to API proxy which forwards to aMember with API key</li>
+                <li>aMember verifies the credential and returns user information</li>
+            </ol>
+            
+            <h4>API Flow:</h4>
+            <p><code>Frontend → api_proxy.php → aMember /api/check-access/by-passkey</code></p>
+            <p><strong>Frontend Request:</strong> <code>{ "credential": { ... } }</code></p>
+            <p><strong>Proxy adds:</strong> API key authentication header</p>
+            <p><strong>Response:</strong> <code>{ "ok": true, "user_id": 123, "name": "John Doe", "email": "john@example.com", "access": true }</code></p>
+        </div>
+    </div>
+
+    <script>
+        // Configuration - Update this URL to match your API proxy location
+        const API_PROXY_URL = './api_proxy.php'; // Relative path to the PHP proxy script
+        
+        // DOM Elements
+        const statusDiv = document.getElementById('status');
+        const loginButton = document.getElementById('passkeyLogin');
+        const userInfoDiv = document.getElementById('userInfo');
+        
+        // Utility function to show status messages
+        function showStatus(message, type = 'info') {
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+        
+        // Utility function to display user information
+        function displayUserInfo(userData) {
+            document.getElementById('userId').textContent = userData.user_id;
+            document.getElementById('userName').textContent = userData.name;
+            document.getElementById('userEmail').textContent = userData.email;
+            document.getElementById('userAccess').textContent = userData.access ? 'Granted' : 'Denied';
+            userInfoDiv.style.display = 'block';
+        }
+        
+        // Base64URL encoding/decoding utilities
+        function base64urlToBase64(str) {
+            return str.replace(/-/g, '+').replace(/_/g, '/').padEnd(str.length + (4 - str.length % 4) % 4, '=');
+        }
+        
+        function base64ToBase64url(str) {
+            return str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+        
+        function base64urlDecode(str) {
+            return atob(base64urlToBase64(str));
+        }
+        
+        function base64urlEncode(buffer) {
+            return base64ToBase64url(btoa(String.fromCharCode(...new Uint8Array(buffer))));
+        }
+        
+        // Convert ArrayBuffer to Base64URL
+        function arrayBufferToBase64url(buffer) {
+            return base64urlEncode(buffer);
+        }
+        
+        // Main passkey authentication function
+        async function authenticateWithPasskey() {
+            try {
+                showStatus('🔍 Checking WebAuthn support...');
+                
+                // Check if WebAuthn is supported
+                if (!window.PublicKeyCredential) {
+                    throw new Error('WebAuthn is not supported in this browser');
+                }
+                
+                showStatus('🔑 Requesting passkey authentication...');
+                loginButton.disabled = true;
+                
+                // Create authentication options
+                const authOptions = {
+                    challenge: crypto.getRandomValues(new Uint8Array(32)),
+                    timeout: 60000,
+                    rpId: window.location.hostname,
+                    allowCredentials: [], // Allow any registered credential
+                    userVerification: 'preferred'
+                };
+                
+                showStatus('👆 Please authenticate with your passkey...');
+                
+                // Get credential from authenticator
+                const credential = await navigator.credentials.get({
+                    publicKey: authOptions
+                });
+                
+                if (!credential) {
+                    throw new Error('No credential received from authenticator');
+                }
+                
+                showStatus('📡 Verifying credential with aMember...');
+                
+                // Prepare credential data for API
+                const credentialData = {
+                    id: credential.id,
+                    rawId: arrayBufferToBase64url(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+                        authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
+                        signature: arrayBufferToBase64url(credential.response.signature),
+                        userHandle: credential.response.userHandle ? 
+                            arrayBufferToBase64url(credential.response.userHandle) : null
+                    },
+                    challenge: arrayBufferToBase64url(authOptions.challenge)
+                };
+                
+                // Send credential to API proxy for verification
+                const response = await fetch(API_PROXY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        credential: credentialData
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.ok && result.access) {
+                    showStatus('✅ Authentication successful!', 'success');
+                    displayUserInfo(result);
+                } else {
+                    throw new Error(result.error || 'Authentication failed');
+                }
+                
+            } catch (error) {
+                console.error('Passkey authentication error:', error);
+                showStatus(`❌ Authentication failed: ${error.message}`, 'error');
+                userInfoDiv.style.display = 'none';
+            } finally {
+                loginButton.disabled = false;
+            }
+        }
+        
+        // Event listeners
+        loginButton.addEventListener('click', authenticateWithPasskey);
+        
+        // Initial setup
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!window.PublicKeyCredential) {
+                showStatus('⚠️ WebAuthn is not supported in this browser. Please use a modern browser with passkey support.', 'error');
+                loginButton.disabled = true;
+            } else {
+                showStatus('✨ Ready to authenticate with passkey!', 'info');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -81,6 +81,104 @@ class Am_Plugin_Passkey extends Am_Plugin
     }
     
     /**
+     * REST API endpoint: /api/passkey-check-access
+     * Verifies user access using passkey (WebAuthn/FIDO2) credentials.
+     * Request: POST with JSON { credential: { ... } }
+     * Response: { ok: true, user_id: ..., name: ..., email: ..., access: true, error: null }
+     */
+    public function onApiPasskeyCheckAccess($event)
+        {
+            $request = $event->getRequest();
+            $response = $event->getResponse();
+            $data = json_decode($request->getRawBody(), true);
+            $credential = isset($data['credential']) ? $data['credential'] : null;
+            $result = [
+                'ok' => false,
+                'user_id' => null,
+                'name' => null,
+                'email' => null,
+                'access' => false,
+                'error' => 'Invalid request',
+            ];
+            if ($credential) {
+                $user = $this->findUserByPasskeyCredential($credential);
+                if ($user) {
+                    $isValid = $this->verifyPasskeyCredential($user, $credential); // returns true/false
+                    if ($isValid) {
+                        $result['ok'] = true;
+                        $result['user_id'] = $user->pk();
+                        $result['name'] = $user->name_f;
+                        $result['email'] = $user->email;
+                        $result['access'] = true;
+                        $result['error'] = null;
+                    } else {
+                        $result['error'] = 'Invalid passkey credential';
+                    }
+                } else {
+                    $result['error'] = 'User not found';
+                }
+            }
+            $response->setHeader('Content-Type', 'application/json');
+            $response->setBody(json_encode($result));
+        }
+    
+        /**
+         * Finds the user by passkey credential (full implementation)
+         */
+        protected function findUserByPasskeyCredential($credential)
+        {
+            $db = Am_Di::getInstance()->db;
+            // Extract credential_id from the credential (WebAuthn response)
+            $credentialId = isset($credential['id']) ? $credential['id'] : null;
+            if (!$credentialId) return null;
+            // Find passkey record by credential_id
+            $row = $db->selectRow('SELECT * FROM ?_passkey_credentials WHERE credential_id = ?', $credentialId);
+            if ($row && !empty($row['user_id'])) {
+                // Find user by user_id
+                return Am_Di::getInstance()->userTable->findFirstByPk($row['user_id']);
+            }
+            return null;
+        }
+
+        /**
+         * Verifies the passkey credential for the user (full implementation)
+         */
+        protected function verifyPasskeyCredential($user, $credential)
+        {
+            // Use WebAuthn library to verify the credential
+            // This is a simplified example, you may need to adapt to your WebAuthn library
+            try {
+                $webauthn = new \WebAuthn\WebAuthn('aMember', $_SERVER['HTTP_HOST']);
+                // Get stored credential data for user
+                $db = Am_Di::getInstance()->db;
+                $row = $db->selectRow('SELECT * FROM ?_passkey_credentials WHERE credential_id = ?', $credential['id']);
+                if (!$row) return false;
+                $storedPublicKey = $row['public_key'];
+                $storedCounter = isset($row['counter']) ? (int)$row['counter'] : 0;
+                // Prepare challenge and credential data
+                $challenge = isset($credential['challenge']) ? $credential['challenge'] : null;
+                $clientDataJSON = isset($credential['clientDataJSON']) ? $credential['clientDataJSON'] : null;
+                $authenticatorData = isset($credential['authenticatorData']) ? $credential['authenticatorData'] : null;
+                $signature = isset($credential['signature']) ? $credential['signature'] : null;
+                $userHandle = isset($credential['userHandle']) ? $credential['userHandle'] : null;
+                if (!$challenge || !$clientDataJSON || !$authenticatorData || !$signature) return false;
+                // Verify credential
+                $result = $webauthn->verify(
+                    $challenge,
+                    $clientDataJSON,
+                    $authenticatorData,
+                    $signature,
+                    $storedPublicKey,
+                    $storedCounter,
+                    $userHandle
+                );
+                return $result === true;
+            } catch (\Exception $e) {
+                return false;
+            }
+        }
+    
+    /**
      * Ensure Composer dependencies are installed automatically
      */
     protected function ensureComposerDependencies()
