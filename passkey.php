@@ -92,8 +92,21 @@ class Am_Plugin_Passkey extends Am_Plugin
             // Register the check-access/by-passkey endpoint
             $di = Am_Di::getInstance();
             
+            error_log('Passkey Plugin: registerApiController called - attempting to register API hooks');
+            
             // Hook into API routing (no need for custom permissions, use existing by-login-pass)
             $di->hook->add('apiRoute', array($this, 'onApiRoute'));
+            error_log('Passkey Plugin: Added apiRoute hook');
+            
+            // Try alternative hook names in case apiRoute doesn't work
+            $di->hook->add('api', array($this, 'onApiRoute'));
+            error_log('Passkey Plugin: Added api hook');
+            
+            $di->hook->add('apiRequest', array($this, 'onApiRoute'));
+            error_log('Passkey Plugin: Added apiRequest hook');
+            
+            $di->hook->add('restApiRequest', array($this, 'onApiRoute'));
+            error_log('Passkey Plugin: Added restApiRequest hook');
             
             error_log('Passkey Plugin: API hooks registered (using by-login-pass permission)');
             
@@ -893,10 +906,38 @@ class Am_Plugin_Passkey extends Am_Plugin
      */
     public function onInitFinished(Am_Event $event)
     {
+        // ENHANCED DEBUGGING VERSION 2.0 - Check for direct API calls
+        $currentUri = $_SERVER['REQUEST_URI'];
+        error_log('Passkey Plugin: onInitFinished called for URI: ' . $currentUri);
+        
+        // DIRECT API HANDLING - Check if this is our API endpoint
+        if (strpos($currentUri, '/api/passkey/config') !== false) {
+            error_log('Passkey Plugin: DIRECT API CALL detected - /api/passkey/config');
+            
+            // Handle the API call directly since hooks might not be working
+            try {
+                error_log('Passkey Plugin: Attempting direct API response');
+                
+                $result = $this->handlePasskeyConfig(null);
+                
+                error_log('Passkey Plugin: Direct API result: ' . json_encode($result));
+                
+                // Send the response
+                header('Content-Type: application/json');
+                echo json_encode($result);
+                exit;
+                
+            } catch (Exception $e) {
+                error_log('Passkey Plugin: Direct API error: ' . $e->getMessage());
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'Direct API error: ' . $e->getMessage()]);
+                exit;
+            }
+        }
+        
         // Only log once per request to reduce noise
         static $initLogged = false;
         if (!$initLogged) {
-            error_log('Passkey Plugin: onInitFinished called for URI: ' . $_SERVER['REQUEST_URI']);
             $initLogged = true;
         }
         
