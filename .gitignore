@@ -9,6 +9,14 @@ composer.phar
 # You may choose to ignore a library lock file http://getcomposer.org/doc/02-libraries.md#lock-file
 # composer.lock
 
+### Auto-generated Plugin Files ###
+# These files are created automatically by the plugin
+application/default/plugins/misc/passkey/composer.json
+application/default/plugins/misc/passkey/composer.lock
+application/default/plugins/misc/passkey/vendor/
+# Any .sql files created by the plugin
+application/default/plugins/misc/passkey/*.sql
+
 ### dotenv ###
 .env
 
@@ -233,3 +241,7 @@ pip-selfcheck.json
 # http://iamzed.com/2009/05/07/a-primer-on-virtualenv/
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,python,venv,dotenv,virtualenv,composer
+facebook/
+vendor/
+two-factor-hotp/
+composer.*

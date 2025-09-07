@@ -1,49 +1,141 @@
-# aMember Passkey (WebAuthn) Plugin Installation & Setup
+# 🔐 aMember Pro Passkey Authentication Plugin
 
-## Requirements
-- aMember Pro installation
-- PHP 8.0+
-- Composer (for PHP dependencies)
-- HTTPS enabled (required for WebAuthn)
+![Built with AI](https://img.shields.io/badge/Built%20with-AI-blue?logo=githubcopilot)
+> **This plugin was built with assistance from GitHub Copilot and AI-powered development tools.**
 
-## Installation Steps
+---
 
-1. **Copy Plugin Files**
-   - Place the `passkey` plugin folder into `application/default/plugins/` in your aMember installation.
+A comprehensive **single-file** WebAuthn/FIDO2 passkey authentication plugin for aMember Pro that provides modern passwordless authentication for users.
 
-2. **Install PHP Dependencies**
-   - In your aMember root directory, run:
-     ```bash
-     composer require web-auth/webauthn-lib
-     ```
-   - This will install the WebAuthn library and dependencies.
+> **Note:** This version does **not** implement passkey authentication for admin login. All passkey features are for member (user) accounts only. Admin management and login via passkey are not supported in this release. Feel free to submit a pull request to add this feature.
 
-3. **Create Passkey Table**
-   - Import the provided `db.sql` file into your aMember database to create the `?_passkey` table.
-   - Example (replace `amember` with your DB name):
-     ```bash
-     mysql -u USER -p amember < application/default/plugins/passkey/db.sql
-     ```
+## ✨ **Key Features**
 
-4. **Enable the Plugin**
-   - Log in to aMember admin.
-   - Go to **Configuration > Plugins**.
-   - Enable the **Passkey Login** plugin.
-   - Configure plugin options under **Configuration > Setup/Configuration > Passkey Login**.
+### 🔑 **Complete Passkey Authentication**
 
-5. **Test Passkey Registration & Login**
-   - Users can register passkeys in their profile ("Passkeys" tab).
-   - Passkey login button will appear on member and admin login forms.
+- **WebAuthn/FIDO2 Implementation** - Industry standard passwordless authentication
+- **Multi-Device Support** - TouchID, FaceID, Windows Hello, USB security keys
+- **User Authentication Only** - Passkey login for member accounts (no admin login)
+- **Cross-Platform Compatibility** - Works on all modern browsers and devices
 
-## Notes
-- Your site must use HTTPS for passkey (WebAuthn) to work.
-- For production, ensure your server time is correct and PHP sessions are working.
-- For advanced configuration, see the plugin settings in the admin panel.
+### 🛠️ **Self-Contained Design**
 
-## Troubleshooting
-- If you see PHP errors about missing classes, ensure Composer dependencies are installed and autoloaded.
-- If passkey registration or login fails, check browser console and PHP error logs for details.
+- **Single File Plugin** - Complete functionality in one file (`passkey.php`)
+- **Auto-Installing Dependencies** - Automatically installs required Composer packages
+- **No External Files Required** - Everything needed is included in the plugin
 
-## Uninstallation
-- Disable the plugin in aMember admin.
-- (Optional) Remove the `passkey` plugin folder and drop the `?_passkey` table from your database.
+### 🎛️ **User Management**
+
+- **Profile Integration** - Users can register, view, and delete passkeys from their profile
+- **Multiple Devices** - Support for multiple passkeys per user
+- **Device Naming** - Users can name their passkeys for easy identification
+
+### ⚙️ **Advanced Configuration**
+
+- **Flexible Settings** - Configurable authenticator requirements, user verification, attestation
+- **Platform Preferences** - Control platform vs cross-platform authenticator usage
+- **Security Policies** - Customizable security requirements for different user types
+
+## 🚀 Installation
+
+### **Preferred Installation (Recommended)**
+
+1. **Clone the Repository**
+
+   ```bash
+   git clone https://github.com/kumpeapps/amember_plugin_passkey.git /path/to/amember/application/default/plugins/misc/passkey
+   ```
+
+   This will create the `passkey` folder and copy all plugin files automatically.
+
+2. **Activate in aMember Admin**
+
+   - Go to **aMember Admin** → **Setup/Configuration** → **Plugins** → **Miscellaneous**
+   - Find **"Passkey"** plugin and **enable** it
+   - Configure the plugin settings
+   - **Save** the configuration
+
+3. **User Profile Access**
+
+   - Users can register and manage passkeys from their profile page
+
+### **Alternate Installation (Manual Upload)**
+
+1. **Upload the Plugin File**
+
+copy all files from this repository to `/path/to/amember/application/default/plugins/misc/passkey/`
+
+2. **Activate and Configure** (same as above)
+
+---
+
+### **That's It!**
+
+- Dependencies auto-install automatically
+- Database tables created automatically
+- No additional files or setup required
+
+## 🎯 **User Experience**
+
+### **Registration Process**
+
+- **Log in to member area**
+- **Go to Profile → Passkeys tab**
+- **Click "Register New Passkey"**
+- **Follow device prompts** (TouchID, FaceID, etc.)
+- **Name your passkey** (e.g., "iPhone", "Security Key")
+
+### **Login Experience**
+
+- **Visit login page**
+- **Click "Login with Passkey" button**
+- **Authenticate with device** (TouchID, FaceID, security key)
+- **Instantly logged in!**
+
+### **Multiple Passkeys**
+
+- Users can register multiple passkeys per account
+- Manage (rename/delete) passkeys from profile
+- Use different devices interchangeably
+
+## 🛡️ **Security**
+
+- **WebAuthn/FIDO2 compliant**
+- **Phishing-resistant authentication**
+- **Private key never leaves device**
+- **Works with hardware security keys**
+- **Biometric authentication support**
+- **HTTPS required**
+
+## 🐛 **Troubleshooting**
+
+- Ensure HTTPS is enabled
+- Check browser compatibility
+- Verify plugin is enabled in aMember admin
+- Check PHP error logs for details
+
+## 📝 **Developer Information**
+
+### File Structure
+
+```
+passkey/
+├── passkey.php           # Main plugin file
+├── composer.json         # Dependency definitions (installed automatically when plugin is enabled)
+├── composer.lock         # Locked dependency versions (installed automatically when plugin is enabled)
+├── vendor/               # Auto-installed dependencies (installed automatically when plugin is enabled)
+└── blocks/               # UI template blocks
+    └── passkey-login.phtml
+```
+
+### Key Features
+
+- **Single-file plugin** following aMember conventions
+- **Automated dependency management** with Composer
+- **Dynamic database table creation**
+- **Comprehensive error handling**
+- **Cross-browser WebAuthn compatibility**
+
+---
+
+**🚀 Transform your aMember site with modern, secure, passwordless authentication for users!**
