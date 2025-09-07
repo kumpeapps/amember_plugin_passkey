@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug aMember Configuration Endpoint</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 20px auto; padding: 20px; }
+        .section { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin: 15px 0; }
+        pre { background: #fff; border: 1px solid #dee2e6; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        .button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .error { color: #dc3545; background: #f8d7da; padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .success { color: #155724; background: #d4edda; padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .warning { color: #856404; background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug aMember Configuration Endpoint</h1>
+    
+    <div class="warning">
+        <strong>Goal:</strong> Fix the "internal error" in the /api/passkey/config endpoint by identifying the exact PHP error.
+    </div>
+    
+    <div class="section">
+        <h3>Step 1: Test Current Configuration Endpoint</h3>
+        <button class="button" onclick="testConfigEndpoint()">Test Configuration Endpoint</button>
+        <div id="config-test-results"></div>
+    </div>
+    
+    <div class="section">
+        <h3>Step 2: Test with Minimal Configuration Handler</h3>
+        <p>Let's test a simplified version to isolate the issue:</p>
+        <button class="button" onclick="testMinimalConfig()">Test Minimal Config</button>
+        <div id="minimal-test-results"></div>
+    </div>
+    
+    <div class="section">
+        <h3>Step 3: Check aMember Logs (if accessible)</h3>
+        <p>The error log location is typically in aMember's data directory. Common paths:</p>
+        <ul>
+            <li><code>/path/to/amember/data/log/</code></li>
+            <li><code>/path/to/amember/application/data/log/</code></li>
+            <li>Check your aMember admin → Setup → Error Log</li>
+        </ul>
+        <p>Look for PHP errors around the time you test the endpoint.</p>
+    </div>
+    
+    <div class="section">
+        <h3>Step 4: Alternative Approach - Direct Plugin Test</h3>
+        <button class="button" onclick="testDirectPlugin()">Test Plugin Directly</button>
+        <div id="direct-test-results"></div>
+    </div>
+
+    <script>
+        async function testConfigEndpoint() {
+            const resultsDiv = document.getElementById('config-test-results');
+            resultsDiv.innerHTML = '<p>Testing configuration endpoint...</p>';
+            
+            try {
+                const response = await fetch('./secure_passkey_auth.php?action=config');
+                const text = await response.text();
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    resultsDiv.innerHTML = `
+                        <div class="error">Failed to parse JSON response:</div>
+                        <pre>${text}</pre>
+                    `;
+                    return;
+                }
+                
+                resultsDiv.innerHTML = `
+                    <h4>Configuration Endpoint Response:</h4>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+                if (data.ok) {
+                    resultsDiv.innerHTML += '<div class="success">✅ Configuration endpoint working!</div>';
+                } else {
+                    resultsDiv.innerHTML += `<div class="error">❌ Configuration failed: ${data.error || 'Unknown error'}</div>`;
+                }
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Network error: ${error.message}</div>`;
+            }
+        }
+        
+        async function testMinimalConfig() {
+            const resultsDiv = document.getElementById('minimal-test-results');
+            resultsDiv.innerHTML = '<p>Testing minimal configuration...</p>';
+            
+            // Create a minimal config request to test
+            try {
+                const response = await fetch('./test_minimal_config.php');
+                const text = await response.text();
+                
+                resultsDiv.innerHTML = `
+                    <h4>Minimal Config Test Results:</h4>
+                    <pre>${text}</pre>
+                `;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Error testing minimal config: ${error.message}</div>`;
+            }
+        }
+        
+        async function testDirectPlugin() {
+            const resultsDiv = document.getElementById('direct-test-results');
+            resultsDiv.innerHTML = '<p>Testing direct plugin access...</p>';
+            
+            try {
+                const response = await fetch('./test_plugin_direct.php');
+                const text = await response.text();
+                
+                resultsDiv.innerHTML = `
+                    <h4>Direct Plugin Test Results:</h4>
+                    <pre>${text}</pre>
+                `;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Error testing direct plugin: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

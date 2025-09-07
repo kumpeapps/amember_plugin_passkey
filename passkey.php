@@ -221,64 +221,55 @@ class Am_Plugin_Passkey extends Am_Plugin
      */
     protected function handlePasskeyConfig($request)
     {
+        error_log('Passkey Plugin: handlePasskeyConfig called');
+        
         try {
-            $di = Am_Di::getInstance();
-            $config = $di->config;
-            $hostname = $_SERVER['HTTP_HOST'];
+            $hostname = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            error_log('Passkey Plugin: Got hostname: ' . $hostname);
             
-            // Get configuration from aMember admin settings with safe defaults
+            // Start with minimal configuration
             $passkeyConfig = [
                 'ok' => true,
                 'rpId' => $hostname,
-                'rpName' => $config->get('site_title', 'aMember'),
-                'timeout' => 60000, // Default timeout
-                'userVerification' => 'preferred', // Default user verification
-                'authenticatorAttachment' => null, // No preference by default
-                'requireResidentKey' => false, // Not required by default
-                'attestation' => 'none', // Default attestation
+                'rpName' => 'aMember',
+                'timeout' => 60000,
+                'userVerification' => 'preferred',
+                'attestation' => 'none',
                 'endpoints' => [
                     'config' => '/api/passkey/config',
                     'authenticate' => '/api/check-access/by-passkey'
                 ]
             ];
             
-            // Try to get plugin-specific configuration if available
+            error_log('Passkey Plugin: Basic config created');
+            
+            // Try to enhance with aMember configuration
             try {
-                $pluginConfig = $config->get('misc.passkey');
-                if ($pluginConfig) {
-                    if (isset($pluginConfig['timeout'])) {
-                        $passkeyConfig['timeout'] = (int)$pluginConfig['timeout'];
-                    }
-                    if (isset($pluginConfig['user_verification'])) {
-                        $passkeyConfig['userVerification'] = $pluginConfig['user_verification'];
-                    }
-                    if (isset($pluginConfig['authenticator_attachment'])) {
-                        $passkeyConfig['authenticatorAttachment'] = $pluginConfig['authenticator_attachment'];
-                    }
-                    if (isset($pluginConfig['require_resident_key'])) {
-                        $passkeyConfig['requireResidentKey'] = (bool)$pluginConfig['require_resident_key'];
-                    }
-                    if (isset($pluginConfig['attestation'])) {
-                        $passkeyConfig['attestation'] = $pluginConfig['attestation'];
-                    }
-                }
+                $di = Am_Di::getInstance();
+                error_log('Passkey Plugin: Got Am_Di instance');
+                
+                $config = $di->config;
+                error_log('Passkey Plugin: Got config object');
+                
+                $siteTitle = $config->get('site_title', 'aMember');
+                $passkeyConfig['rpName'] = $siteTitle;
+                error_log('Passkey Plugin: Enhanced with site title: ' . $siteTitle);
+                
             } catch (Exception $configException) {
-                // If plugin config fails, continue with defaults
-                error_log('Passkey Plugin: Could not load plugin config, using defaults: ' . $configException->getMessage());
+                error_log('Passkey Plugin: Config enhancement failed: ' . $configException->getMessage());
+                // Continue with basic config
             }
             
-            // Remove null values
-            $passkeyConfig = array_filter($passkeyConfig, function($value) {
-                return $value !== null;
-            });
-            
+            error_log('Passkey Plugin: Returning config: ' . json_encode($passkeyConfig));
             return $passkeyConfig;
             
         } catch (Exception $e) {
             error_log('Passkey Plugin: Configuration endpoint error: ' . $e->getMessage());
+            error_log('Passkey Plugin: Error trace: ' . $e->getTraceAsString());
             return [
                 'ok' => false,
-                'error' => 'Failed to get configuration: ' . $e->getMessage()
+                'error' => 'Configuration error: ' . $e->getMessage(),
+                'debug' => 'Check server error logs for details'
             ];
         }
     }

@@ -95,35 +95,32 @@ function makeApiRequest($endpoint, $data = null, $method = 'GET') {
  * Get passkey configuration from aMember
  */
 function getPasskeyConfig() {
-    global $amemberUrl;
-    
     $endpoints = [
         '/api/passkey/config',
         '/api/passkey-config',
         '/misc/passkey?action=config'
     ];
     
+    $lastError = '';
     foreach ($endpoints as $endpoint) {
         $result = makeApiRequest($endpoint, null, 'GET');
+        
+        // Log the full response for debugging
+        error_log("Passkey Config Test - Endpoint: $endpoint, Response: " . json_encode($result));
+        
         if (isset($result['ok']) && $result['ok']) {
             return $result;
         }
+        
+        $lastError = isset($result['error']) ? $result['error'] : 
+                    (isset($result['message']) ? $result['message'] : 'Unknown error');
     }
     
-    // Fallback configuration if API endpoint not available
+    // Return the actual error instead of fallback
     return [
-        'ok' => true,
-        'rpId' => parse_url($amemberUrl, PHP_URL_HOST),
-        'rpName' => 'aMember',
-        'timeout' => 60000,
-        'userVerification' => 'preferred',
-        'attestation' => 'none',
-        'endpoints' => [
-            'config' => '/api/passkey/config',
-            'authenticate' => '/api/check-access/by-passkey'
-        ],
-        'fallback' => true,
-        'message' => 'Using fallback configuration - API endpoint may not be available'
+        'ok' => false,
+        'error' => 'Configuration endpoint failed: ' . $lastError,
+        'debug' => 'All endpoints returned errors, check aMember error logs'
     ];
 }
 
