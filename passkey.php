@@ -524,8 +524,28 @@ class Am_Plugin_Passkey extends Am_Plugin
             $config = Am_Di::getInstance()->config;
             $currentHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
             
-            // Get stored related origins from config
-            $relatedOriginsConfig = $config->get('misc.passkey.related_origins', '[]');
+            // Try multiple possible config key locations
+            $possibleKeys = [
+                'misc.passkey.related_origins',
+                'passkey.related_origins', 
+                'related_origins',
+                'misc.passkey.passkey.related_origins'
+            ];
+            
+            $relatedOriginsConfig = '[]';
+            $usedKey = null;
+            
+            foreach ($possibleKeys as $key) {
+                $value = $config->get($key, null);
+                if ($value !== null) {
+                    $relatedOriginsConfig = $value;
+                    $usedKey = $key;
+                    break;
+                }
+            }
+            
+            error_log("Passkey Plugin: Related origins config key used: " . ($usedKey ?: 'none found') . ", value: " . $relatedOriginsConfig);
+            
             $relatedOrigins = json_decode($relatedOriginsConfig, true);
             
             if (!is_array($relatedOrigins)) {
@@ -653,6 +673,37 @@ class Am_Plugin_Passkey extends Am_Plugin
                 'ok' => false,
                 'error' => 'Failed to remove related origin: ' . $e->getMessage()
             ];
+        }
+    }
+
+    /**
+     * Get stored related origins config value for the admin form
+     */
+    protected function getStoredRelatedOriginsConfig()
+    {
+        try {
+            $config = Am_Di::getInstance()->config;
+            
+            // Try multiple possible config key locations
+            $possibleKeys = [
+                'misc.passkey.related_origins',
+                'passkey.related_origins', 
+                'related_origins',
+                'misc.passkey.passkey.related_origins'
+            ];
+            
+            foreach ($possibleKeys as $key) {
+                $value = $config->get($key, null);
+                if ($value !== null) {
+                    return $value;
+                }
+            }
+            
+            return '[]'; // Default empty array
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error getting stored related origins config: ' . $e->getMessage());
+            return '[]';
         }
     }
 
@@ -1276,7 +1327,7 @@ class Am_Plugin_Passkey extends Am_Plugin
             $form->addTextarea('related_origins', ['class' => 'am-el-wide', 'rows' => 4])
                 ->setLabel('Related Origins (JSON Array)')
                 ->setComment('Enter a JSON array of allowed origins, e.g., ["https://app.example.com", "https://mobile.example.com"]<br>Leave empty if you only use this domain.')
-                ->setValue(Am_Di::getInstance()->config->get('misc.passkey.related_origins', '[]'));
+                ->setValue($this->getStoredRelatedOriginsConfig());
             
             $form->addStatic()->setLabel('Cross-Domain Setup')->setContent('
                 <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; border: 1px solid #b3d9ff;">
