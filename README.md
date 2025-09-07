@@ -113,9 +113,13 @@ The `/examples` folder contains complete integration examples for using the pass
 
 ### 🛡️ **Secure Implementation (Recommended)**
 
-- **`passkey_login_secure.html`** - Secure frontend implementation
+- **`passkey_login_secure.html`** - Secure frontend that auto-loads configuration from aMember
 - **`secure_passkey_auth.php`** - Secure server-side proxy that protects API keys
 - **`passkey_login_example.html`** - Auto-detecting proxy version
+
+### 🧪 **Testing Tools**
+
+- **`test_config_endpoint.html`** - Test the new configuration endpoint
 
 ### ⚠️ **Important Security Warning**
 
