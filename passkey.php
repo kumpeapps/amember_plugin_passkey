@@ -107,30 +107,53 @@ class Am_Plugin_Passkey extends Am_Plugin
      */
     public function onApiRoute($event)
     {
-        $request = $event->getRequest();
-        $path = $request->getPathInfo();
+        error_log('Passkey Plugin: onApiRoute ENTRY - Starting API route handling');
         
-        error_log('Passkey Plugin: API Route called with path: ' . $path);
-        
-        // Check API permissions using existing by-login-pass permission
-        $apiKey = $request->getParam('_key') ?: $request->getHeader('X-API-Key');
-        if (!$this->checkApiPermission($apiKey, 'by-login-pass')) {
-            $event->setReturn(array('error' => 'Access denied', 'code' => 403));
+        try {
+            $request = $event->getRequest();
+            error_log('Passkey Plugin: Got request object: ' . (is_object($request) ? 'YES' : 'NO'));
+            
+            $path = $request->getPathInfo();
+            error_log('Passkey Plugin: API Route called with path: ' . $path);
+            
+            // Check API permissions using existing by-login-pass permission
+            $apiKey = $request->getParam('_key') ?: $request->getHeader('X-API-Key');
+            error_log('Passkey Plugin: API Key present: ' . ($apiKey ? 'YES' : 'NO'));
+            
+            if (!$this->checkApiPermission($apiKey, 'by-login-pass')) {
+                error_log('Passkey Plugin: API permission check FAILED');
+                $event->setReturn(array('error' => 'Access denied', 'code' => 403));
+                $event->stopPropagation();
+                return;
+            }
+            error_log('Passkey Plugin: API permission check PASSED');
+            
+            if (preg_match('#^/api/check-access/by-passkey/?$#', $path)) {
+                error_log('Passkey Plugin: Matched check-access endpoint');
+                // Handle passkey authentication
+                $result = $this->handlePasskeyCheckAccess($request);
+                $event->setReturn($result);
+                $event->stopPropagation();
+            } elseif (preg_match('#^/api/passkey/config/?$#', $path)) {
+                error_log('Passkey Plugin: Matched passkey config endpoint - calling handlePasskeyConfig');
+                // Handle passkey configuration request
+                $result = $this->handlePasskeyConfig($request);
+                error_log('Passkey Plugin: handlePasskeyConfig returned: ' . json_encode($result));
+                $event->setReturn($result);
+                $event->stopPropagation();
+                error_log('Passkey Plugin: Config endpoint processing complete');
+            } else {
+                error_log('Passkey Plugin: No matching endpoint for path: ' . $path);
+            }
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: CRITICAL ERROR in onApiRoute: ' . $e->getMessage());
+            error_log('Passkey Plugin: Error trace: ' . $e->getTraceAsString());
+            $event->setReturn(array('error' => 'Internal server error: ' . $e->getMessage(), 'code' => 500));
             $event->stopPropagation();
-            return;
         }
         
-        if (preg_match('#^/api/check-access/by-passkey/?$#', $path)) {
-            // Handle passkey authentication
-            $result = $this->handlePasskeyCheckAccess($request);
-            $event->setReturn($result);
-            $event->stopPropagation();
-        } elseif (preg_match('#^/api/passkey/config/?$#', $path)) {
-            // Handle passkey configuration request
-            $result = $this->handlePasskeyConfig($request);
-            $event->setReturn($result);
-            $event->stopPropagation();
-        }
+        error_log('Passkey Plugin: onApiRoute EXIT - Route handling complete');
     }
     
     /**

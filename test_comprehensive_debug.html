@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🎯 Comprehensive API Debug Suite</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .test-section { background: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #dee2e6; }
+        .debug-log { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 5px; font-family: monospace; white-space: pre-wrap; overflow-x: auto; margin: 10px 0; max-height: 400px; overflow-y: auto; }
+        .error { color: #dc3545; }
+        .success { color: #28a745; }
+        .warning { color: #ffc107; }
+        .info { color: #17a2b8; }
+        button { background: #007cba; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; margin: 5px; }
+        button:hover { background: #005a8b; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #1e7e34; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-warning:hover { background: #e0a800; }
+        .test-result { background: #f0f8ff; border: 2px solid #007cba; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .status-indicator { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+        .status-success { background: #28a745; }
+        .status-error { background: #dc3545; }
+        .status-warning { background: #ffc107; }
+        .status-info { background: #17a2b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Comprehensive API Debug Suite</h1>
+        <p>Multiple test approaches to identify the exact failure point in the passkey configuration API.</p>
+        
+        <div class="test-section">
+            <h2>🔬 Test 1: Enhanced API Routing Debug</h2>
+            <p>Tests the API endpoint with extensive debug logging in the routing code.</p>
+            <button onclick="testEnhancedAPI()">Test Enhanced API Debug</button>
+            <div id="enhanced-output" class="debug-log">Enhanced API test output will appear here...</div>
+        </div>
+        
+        <div class="test-section">
+            <h2>🎪 Test 2: Direct Plugin Method Call</h2>
+            <p>Bypasses aMember API routing to test the plugin method directly.</p>
+            <button onclick="testDirectPlugin()" class="btn-success">Test Direct Plugin Call</button>
+            <div id="direct-output" class="debug-log">Direct plugin test output will appear here...</div>
+        </div>
+        
+        <div class="test-section">
+            <h2>🔍 Test 3: API Routing Analysis</h2>
+            <p>Tests multiple API endpoints to verify routing behavior.</p>
+            <button onclick="testAPIRouting()" class="btn-warning">Test API Routing</button>
+            <div id="routing-output" class="debug-log">API routing test output will appear here...</div>
+        </div>
+        
+        <div class="test-section">
+            <h2>📊 Test Summary</h2>
+            <div id="test-summary">
+                <p><span class="status-indicator status-info"></span> <strong>Enhanced API:</strong> <span id="enhanced-status">Not tested</span></p>
+                <p><span class="status-indicator status-info"></span> <strong>Direct Plugin:</strong> <span id="direct-status">Not tested</span></p>
+                <p><span class="status-indicator status-info"></span> <strong>API Routing:</strong> <span id="routing-status">Not tested</span></p>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>📋 Debug Log Analysis</h2>
+            <p><strong>After running tests, check your aMember error logs for these debug messages:</strong></p>
+            <ul>
+                <li><code>Passkey Plugin: onApiRoute ENTRY</code> - API routing started</li>
+                <li><code>Passkey Plugin: Got request object: YES</code> - Request object available</li>
+                <li><code>Passkey Plugin: API permission check PASSED</code> - Authentication successful</li>
+                <li><code>Passkey Plugin: Matched passkey config endpoint</code> - Endpoint routing working</li>
+                <li><code>Passkey Plugin: handlePasskeyConfig called</code> - Method entry point</li>
+                <li><code>Passkey Plugin: Got hostname:</code> - Basic configuration step</li>
+                <li><code>Passkey Plugin: Basic config created</code> - Configuration object created</li>
+                <li><code>Passkey Plugin: Returning config:</code> - Final configuration data</li>
+                <li><code>Direct Plugin Test:</code> - Direct method call debug messages</li>
+            </ul>
+            
+            <h3>🚨 Look for these error patterns:</h3>
+            <ul>
+                <li><code>CRITICAL ERROR in onApiRoute:</code> - Fatal error in routing</li>
+                <li><code>Configuration endpoint error:</code> - Error in config method</li>
+                <li><code>PHP Fatal error:</code> - PHP runtime errors</li>
+                <li><code>Class not found:</code> - Missing dependencies</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function log(message, type = 'info', outputId = null) {
+            const outputs = outputId ? [outputId] : ['enhanced-output', 'direct-output', 'routing-output'];
+            const timestamp = new Date().toISOString();
+            const colorClass = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'info';
+            
+            outputs.forEach(id => {
+                const output = document.getElementById(id);
+                if (output && (outputId === null || id === outputId)) {
+                    output.innerHTML += `<span class="${colorClass}">[${timestamp.split('T')[1].split('.')[0]}] ${message}</span>\n`;
+                    output.scrollTop = output.scrollHeight;
+                }
+            });
+            
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function updateStatus(test, status, type = 'info') {
+            const statusElement = document.getElementById(`${test}-status`);
+            const indicator = statusElement.parentElement.querySelector('.status-indicator');
+            
+            statusElement.textContent = status;
+            indicator.className = `status-indicator status-${type}`;
+        }
+
+        async function testEnhancedAPI() {
+            const outputId = 'enhanced-output';
+            document.getElementById(outputId).innerHTML = '';
+            
+            log('🔬 Starting Enhanced API Debug Test...', 'info', outputId);
+            updateStatus('enhanced', 'Testing...', 'warning');
+            
+            try {
+                log('📡 Calling /api/passkey/config with enhanced debugging...', 'info', outputId);
+                
+                const response = await fetch('/api/passkey/config', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                log(`📊 Response Status: ${response.status} ${response.statusText}`, 'info', outputId);
+                
+                const responseText = await response.text();
+                log(`📄 Response Length: ${responseText.length} characters`, 'info', outputId);
+                
+                if (responseText.length > 1000) {
+                    log(`📋 Response Preview: ${responseText.substring(0, 500)}...`, 'info', outputId);
+                } else {
+                    log(`📋 Full Response: ${responseText}`, 'info', outputId);
+                }
+                
+                let responseData;
+                try {
+                    responseData = JSON.parse(responseText);
+                    
+                    if (responseData.ok === true) {
+                        log('🎉 SUCCESS: Enhanced API returned valid configuration!', 'success', outputId);
+                        updateStatus('enhanced', 'SUCCESS', 'success');
+                    } else {
+                        log(`❌ API returned error: ${responseData.error || 'Unknown error'}`, 'error', outputId);
+                        updateStatus('enhanced', 'FAILED', 'error');
+                    }
+                } catch (parseError) {
+                    log(`❌ Invalid JSON response: ${parseError.message}`, 'error', outputId);
+                    updateStatus('enhanced', 'INVALID JSON', 'error');
+                }
+                
+            } catch (error) {
+                log(`💥 Network Error: ${error.message}`, 'error', outputId);
+                updateStatus('enhanced', 'NETWORK ERROR', 'error');
+            }
+        }
+
+        async function testDirectPlugin() {
+            const outputId = 'direct-output';
+            document.getElementById(outputId).innerHTML = '';
+            
+            log('🎪 Starting Direct Plugin Test...', 'info', outputId);
+            updateStatus('direct', 'Testing...', 'warning');
+            
+            try {
+                log('🔗 Calling plugin method directly via test_direct_plugin_call.php...', 'info', outputId);
+                
+                const response = await fetch('/test_direct_plugin_call.php', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                log(`📊 Response Status: ${response.status} ${response.statusText}`, 'info', outputId);
+                
+                const responseText = await response.text();
+                log(`📄 Response: ${responseText}`, 'info', outputId);
+                
+                let responseData;
+                try {
+                    responseData = JSON.parse(responseText);
+                    
+                    if (responseData.success === true) {
+                        log('🎉 SUCCESS: Direct plugin call worked!', 'success', outputId);
+                        log(`📦 Plugin Result: ${JSON.stringify(responseData.result, null, 2)}`, 'success', outputId);
+                        updateStatus('direct', 'SUCCESS', 'success');
+                    } else {
+                        log(`❌ Direct plugin call failed: ${responseData.error}`, 'error', outputId);
+                        updateStatus('direct', 'FAILED', 'error');
+                    }
+                } catch (parseError) {
+                    log(`❌ Invalid JSON response: ${parseError.message}`, 'error', outputId);
+                    updateStatus('direct', 'INVALID JSON', 'error');
+                }
+                
+            } catch (error) {
+                log(`💥 Network Error: ${error.message}`, 'error', outputId);
+                updateStatus('direct', 'NETWORK ERROR', 'error');
+            }
+        }
+
+        async function testAPIRouting() {
+            const outputId = 'routing-output';
+            document.getElementById(outputId).innerHTML = '';
+            
+            log('🔍 Starting API Routing Analysis...', 'info', outputId);
+            updateStatus('routing', 'Testing...', 'warning');
+            
+            const endpoints = [
+                '/api/passkey/config',
+                '/api/passkey-config',
+                '/misc/passkey?action=config'
+            ];
+            
+            let successCount = 0;
+            
+            for (const endpoint of endpoints) {
+                try {
+                    log(`📡 Testing endpoint: ${endpoint}`, 'info', outputId);
+                    
+                    const response = await fetch(endpoint, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    log(`  Status: ${response.status} ${response.statusText}`, 'info', outputId);
+                    
+                    const responseText = await response.text();
+                    
+                    if (responseText.length < 200) {
+                        log(`  Response: ${responseText}`, 'info', outputId);
+                    } else {
+                        log(`  Response Length: ${responseText.length} chars`, 'info', outputId);
+                    }
+                    
+                    try {
+                        const data = JSON.parse(responseText);
+                        if (data.ok === true) {
+                            log(`  ✅ SUCCESS for ${endpoint}`, 'success', outputId);
+                            successCount++;
+                        } else {
+                            log(`  ❌ Error for ${endpoint}: ${data.error || 'Unknown'}`, 'error', outputId);
+                        }
+                    } catch (e) {
+                        log(`  ⚠️ Non-JSON response for ${endpoint}`, 'warning', outputId);
+                    }
+                    
+                } catch (error) {
+                    log(`  💥 Network error for ${endpoint}: ${error.message}`, 'error', outputId);
+                }
+                
+                log('', 'info', outputId); // Empty line for readability
+            }
+            
+            if (successCount > 0) {
+                updateStatus('routing', `${successCount}/${endpoints.length} SUCCESS`, 'success');
+            } else {
+                updateStatus('routing', 'ALL FAILED', 'error');
+            }
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🚀 Comprehensive API Debug Suite loaded. Run tests individually or all together.', 'info', 'enhanced-output');
+        });
+    </script>
+</body>
+</html>
