@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Related Origins Diagnostic Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+        .info { background-color: #e7f3ff; border-color: #b3d9ff; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; white-space: pre-wrap; }
+        button { padding: 8px 16px; margin: 5px; cursor: pointer; }
+        .status { font-weight: bold; }
+        .domain-test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Related Origins Diagnostic Test</h1>
+        <p>This tool helps diagnose WebAuthn related origins configuration and SSL issues.</p>
+
+        <div class="section info">
+            <h3>🌐 Current Domain Analysis</h3>
+            <p><strong>Current Origin:</strong> <span id="currentOrigin"></span></p>
+            <p><strong>Hostname:</strong> <span id="currentHostname"></span></p>
+            <p><strong>Protocol:</strong> <span id="currentProtocol"></span></p>
+            <p><strong>Port:</strong> <span id="currentPort"></span></p>
+        </div>
+
+        <div class="section">
+            <h3>📊 Test Related Origins Configuration</h3>
+            <button onclick="testAllDomains()">Test All Domain Configurations</button>
+            <div id="domainTestResults"></div>
+        </div>
+
+        <div class="section">
+            <h3>🔗 Test Specific Well-Known Files</h3>
+            <div class="domain-test">
+                <h4>Primary Domain (aMember)</h4>
+                <button onclick="testWellKnown('https://www.kumpeapps.com')">Test www.kumpeapps.com</button>
+                <div id="primary-result"></div>
+            </div>
+            
+            <div class="domain-test">
+                <h4>Related Domain Options</h4>
+                <button onclick="testWellKnown('https://kumpe3d.com')">Test kumpe3d.com</button>
+                <button onclick="testWellKnown('https://www.kumpe3d.com')">Test www.kumpe3d.com</button>
+                <div id="related-results"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>⚙️ Configuration Recommendations</h3>
+            <div id="recommendations"></div>
+        </div>
+
+        <div class="section">
+            <h3>🧪 Manual Test Commands</h3>
+            <pre id="testCommands"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Set current domain info
+        const currentOrigin = window.location.origin;
+        const currentUrl = new URL(window.location.href);
+        
+        document.getElementById('currentOrigin').textContent = currentOrigin;
+        document.getElementById('currentHostname').textContent = currentUrl.hostname;
+        document.getElementById('currentProtocol').textContent = currentUrl.protocol;
+        document.getElementById('currentPort').textContent = currentUrl.port || 'default';
+
+        async function testWellKnown(domain) {
+            console.log('Testing well-known for:', domain);
+            
+            try {
+                const wellKnownUrl = domain + '/.well-known/webauthn';
+                const response = await fetch(wellKnownUrl, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const responseText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (e) {
+                    throw new Error('Invalid JSON: ' + responseText.substring(0, 200));
+                }
+
+                return {
+                    success: true,
+                    domain: domain,
+                    status: response.status,
+                    headers: {
+                        contentType: response.headers.get('content-type'),
+                        accessControl: response.headers.get('access-control-allow-origin'),
+                        cacheControl: response.headers.get('cache-control')
+                    },
+                    data: data,
+                    originsCount: data.origins ? data.origins.length : 0
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    domain: domain,
+                    error: error.message
+                };
+            }
+        }
+
+        async function testConfigAPI(domain) {
+            try {
+                const configUrl = domain + '/api/passkey/config';
+                const response = await fetch(configUrl, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const responseText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (e) {
+                    throw new Error('Invalid JSON: ' + responseText.substring(0, 200));
+                }
+
+                return {
+                    success: true,
+                    domain: domain,
+                    data: data
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    domain: domain,
+                    error: error.message
+                };
+            }
+        }
+
+        async function testAllDomains() {
+            const resultDiv = document.getElementById('domainTestResults');
+            const recommendationsDiv = document.getElementById('recommendations');
+            
+            resultDiv.innerHTML = '<p>Testing domains...</p>';
+            
+            const domains = [
+                'https://www.kumpeapps.com',
+                'https://kumpe3d.com',
+                'https://www.kumpe3d.com'
+            ];
+
+            let results = '';
+            let recommendations = '';
+            const wellKnownResults = [];
+            
+            for (const domain of domains) {
+                // Test well-known file
+                const wellKnownResult = await testWellKnown(domain);
+                wellKnownResults.push(wellKnownResult);
+                
+                // Test config API (only for primary domain)
+                let configResult = null;
+                if (domain === 'https://www.kumpeapps.com') {
+                    configResult = await testConfigAPI(domain);
+                }
+
+                results += `
+                    <div class="domain-test ${wellKnownResult.success ? 'success' : 'error'}">
+                        <h4>${domain}</h4>
+                        <div>
+                            <strong>Well-Known File:</strong> 
+                            ${wellKnownResult.success ? '✅ Success' : '❌ Failed'}
+                        </div>
+                `;
+
+                if (wellKnownResult.success) {
+                    results += `
+                        <div><strong>Status:</strong> ${wellKnownResult.status}</div>
+                        <div><strong>Origins Count:</strong> ${wellKnownResult.originsCount}</div>
+                        <div><strong>Content-Type:</strong> ${wellKnownResult.headers.contentType}</div>
+                        <div><strong>CORS:</strong> ${wellKnownResult.headers.accessControl || 'Not set'}</div>
+                        <details>
+                            <summary>Origins Data</summary>
+                            <pre>${JSON.stringify(wellKnownResult.data, null, 2)}</pre>
+                        </details>
+                    `;
+                } else {
+                    results += `<div><strong>Error:</strong> ${wellKnownResult.error}</div>`;
+                }
+
+                if (configResult) {
+                    results += `
+                        <div>
+                            <strong>Config API:</strong> 
+                            ${configResult.success ? '✅ Success' : '❌ Failed'}
+                        </div>
+                    `;
+                    if (configResult.success && configResult.data.relatedOrigins) {
+                        results += `
+                            <div><strong>Related Origins:</strong> ${configResult.data.relatedOrigins.origins.length}</div>
+                            <details>
+                                <summary>Config Data</summary>
+                                <pre>${JSON.stringify(configResult.data.relatedOrigins, null, 2)}</pre>
+                            </details>
+                        `;
+                    }
+                }
+
+                results += '</div>';
+            }
+
+            // Generate recommendations
+            const primaryDomain = wellKnownResults.find(r => r.domain === 'https://www.kumpeapps.com');
+            const kumpe3dDomain = wellKnownResults.find(r => r.domain === 'https://kumpe3d.com');
+            const wwwKumpe3dDomain = wellKnownResults.find(r => r.domain === 'https://www.kumpe3d.com');
+
+            recommendations += '<h4>🎯 Configuration Analysis</h4>';
+            
+            if (primaryDomain && primaryDomain.success) {
+                recommendations += '<div class="success">✅ Primary domain (www.kumpeapps.com) well-known file is working</div>';
+                
+                if (primaryDomain.data.origins) {
+                    const origins = primaryDomain.data.origins;
+                    recommendations += `<div>📋 Configured origins: ${origins.join(', ')}</div>`;
+                    
+                    // Check which related domains are working
+                    if (kumpe3dDomain && kumpe3dDomain.success) {
+                        recommendations += '<div class="success">✅ kumpe3d.com well-known file is accessible</div>';
+                    } else {
+                        recommendations += '<div class="error">❌ kumpe3d.com well-known file is not accessible</div>';
+                    }
+                    
+                    if (wwwKumpe3dDomain && wwwKumpe3dDomain.success) {
+                        recommendations += '<div class="success">✅ www.kumpe3d.com well-known file is accessible</div>';
+                    } else {
+                        recommendations += '<div class="error">❌ www.kumpe3d.com well-known file is not accessible</div>';
+                    }
+                    
+                    // Domain matching analysis
+                    recommendations += '<h4>🔍 Domain Configuration Analysis</h4>';
+                    if (origins.includes('https://kumpe3d.com') && !origins.includes('https://www.kumpe3d.com')) {
+                        recommendations += '<div class="warning">⚠️ Only kumpe3d.com is configured, but you might need www.kumpe3d.com too</div>';
+                    } else if (origins.includes('https://www.kumpe3d.com') && !origins.includes('https://kumpe3d.com')) {
+                        recommendations += '<div class="warning">⚠️ Only www.kumpe3d.com is configured, but you might need kumpe3d.com too</div>';
+                    } else if (origins.includes('https://kumpe3d.com') && origins.includes('https://www.kumpe3d.com')) {
+                        recommendations += '<div class="success">✅ Both kumpe3d.com and www.kumpe3d.com are configured</div>';
+                    }
+                }
+            } else {
+                recommendations += '<div class="error">❌ Primary domain well-known file is not working</div>';
+            }
+
+            recommendations += `
+                <h4>📝 Next Steps</h4>
+                <ol>
+                    <li>Ensure you're testing from the exact domain configured in related origins</li>
+                    <li>Check SSL certificates for all domains</li>
+                    <li>Verify CORS headers are properly set</li>
+                    <li>Test passkey creation/usage from the correct origin</li>
+                </ol>
+            `;
+
+            resultDiv.innerHTML = results;
+            recommendationsDiv.innerHTML = recommendations;
+
+            // Generate test commands
+            document.getElementById('testCommands').textContent = `
+# Test well-known files manually:
+curl -v https://www.kumpeapps.com/.well-known/webauthn
+curl -v https://kumpe3d.com/.well-known/webauthn  
+curl -v https://www.kumpe3d.com/.well-known/webauthn
+
+# Test config API:
+curl -v https://www.kumpeapps.com/api/passkey/config
+
+# Check SSL certificates:
+openssl s_client -connect kumpe3d.com:443 -servername kumpe3d.com
+openssl s_client -connect www.kumpe3d.com:443 -servername www.kumpe3d.com
+            `;
+        }
+
+        // Auto-run tests on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Related Origins Diagnostic Tool Loaded');
+            testAllDomains();
+        });
+    </script>
+</body>
+</html>
