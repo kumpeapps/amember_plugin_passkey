@@ -134,7 +134,9 @@ class Am_Plugin_Passkey extends Am_Plugin
     public function onConfigSave($event)
     {
         error_log('Passkey Plugin: onConfigSave called - updating well-known file');
-        $this->updateWellKnownFile();
+        error_log('Passkey Plugin: Event class: ' . (is_object($event) ? get_class($event) : 'not an object'));
+        $result = $this->updateWellKnownFile();
+        error_log('Passkey Plugin: onConfigSave - updateWellKnownFile result: ' . ($result ? 'SUCCESS' : 'FAILED'));
     }
 
     /**
@@ -143,7 +145,9 @@ class Am_Plugin_Passkey extends Am_Plugin
     public function onSetupFormsSave($event)
     {
         error_log('Passkey Plugin: onSetupFormsSave called - updating well-known file');
-        $this->updateWellKnownFile();
+        error_log('Passkey Plugin: Event class: ' . (is_object($event) ? get_class($event) : 'not an object'));
+        $result = $this->updateWellKnownFile();
+        error_log('Passkey Plugin: onSetupFormsSave - updateWellKnownFile result: ' . ($result ? 'SUCCESS' : 'FAILED'));
     }
     
     /**
@@ -371,6 +375,8 @@ class Am_Plugin_Passkey extends Am_Plugin
      */
     protected function getPasskeyConfiguration()
     {
+        error_log('Passkey Plugin: getPasskeyConfiguration called - forcing well-known file update');
+        
         $hostname = $_SERVER['HTTP_HOST'] ?? 'localhost';
         error_log('Passkey Plugin: Got hostname: ' . $hostname);
         
@@ -389,6 +395,9 @@ class Am_Plugin_Passkey extends Am_Plugin
         ];
         
         error_log('Passkey Plugin: Basic config created');
+        
+        // Force well-known file update every time config is requested
+        $this->updateWellKnownFile();
         
         // Try to enhance with aMember configuration
         try {
@@ -784,28 +793,65 @@ class Am_Plugin_Passkey extends Am_Plugin
     protected function updateWellKnownFile()
     {
         try {
-            // Get document root
+            // Enhanced logging for debugging
+            error_log('Passkey Plugin: updateWellKnownFile() called');
+            
+            // Get document root with multiple fallback methods
             $documentRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+            error_log('Passkey Plugin: $_SERVER[DOCUMENT_ROOT] = ' . $documentRoot);
+            
+            // Try alternative document root detection methods
             if (empty($documentRoot)) {
-                error_log('Passkey Plugin: Cannot update .well-known file - document root not available');
+                // Method 1: Try realpath of current directory
+                $documentRoot = realpath(__DIR__ . '/../../..');
+                error_log('Passkey Plugin: Fallback method 1 (realpath): ' . $documentRoot);
+            }
+            
+            if (empty($documentRoot) || !is_dir($documentRoot)) {
+                // Method 2: Try aMember's root directory detection
+                if (defined('AM_APPLICATION_PATH')) {
+                    $documentRoot = dirname(AM_APPLICATION_PATH);
+                    error_log('Passkey Plugin: Fallback method 2 (AM_APPLICATION_PATH): ' . $documentRoot);
+                } elseif (class_exists('Am_Di')) {
+                    $config = Am_Di::getInstance()->config;
+                    $root = $config->get('root_dir', '');
+                    if (!empty($root)) {
+                        $documentRoot = $root;
+                        error_log('Passkey Plugin: Fallback method 3 (aMember config): ' . $documentRoot);
+                    }
+                }
+            }
+            
+            if (empty($documentRoot) || !is_dir($documentRoot)) {
+                error_log('Passkey Plugin: Cannot update .well-known file - no valid document root found');
+                error_log('Passkey Plugin: Tried: $_SERVER[DOCUMENT_ROOT], realpath, AM_APPLICATION_PATH, aMember config');
                 return false;
             }
             
             $wellKnownDir = $documentRoot . '/.well-known';
             $wellKnownFile = $wellKnownDir . '/webauthn';
             
+            error_log('Passkey Plugin: Document root: ' . $documentRoot);
+            error_log('Passkey Plugin: Well-known dir: ' . $wellKnownDir);
+            error_log('Passkey Plugin: Well-known file: ' . $wellKnownFile);
+            error_log('Passkey Plugin: Directory exists: ' . (is_dir($wellKnownDir) ? 'YES' : 'NO'));
+            error_log('Passkey Plugin: Directory writable: ' . (is_writable(dirname($wellKnownDir)) ? 'YES' : 'NO'));
+            
             // Create .well-known directory if it doesn't exist
             if (!is_dir($wellKnownDir)) {
                 if (!mkdir($wellKnownDir, 0755, true)) {
-                    error_log('Passkey Plugin: Failed to create .well-known directory');
+                    error_log('Passkey Plugin: Failed to create .well-known directory at: ' . $wellKnownDir);
+                    error_log('Passkey Plugin: Parent directory writable: ' . (is_writable(dirname($wellKnownDir)) ? 'YES' : 'NO'));
+                    error_log('Passkey Plugin: Parent directory exists: ' . (is_dir(dirname($wellKnownDir)) ? 'YES' : 'NO'));
                     return false;
                 }
+                error_log('Passkey Plugin: Created .well-known directory successfully');
             }
             
             // Get current origins
             $originsData = $this->getRelatedOrigins();
             if (!$originsData['ok']) {
-                error_log('Passkey Plugin: Failed to get origins for .well-known file');
+                error_log('Passkey Plugin: Failed to get origins for .well-known file: ' . ($originsData['error'] ?? 'unknown error'));
                 return false;
             }
             
@@ -813,18 +859,37 @@ class Am_Plugin_Passkey extends Am_Plugin
                 'origins' => $originsData['origins']
             ];
             
+            error_log('Passkey Plugin: Origins to write: ' . json_encode($originsData['origins']));
+            
             // Write the file
             $jsonContent = json_encode($webauthnConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-            if (file_put_contents($wellKnownFile, $jsonContent) !== false) {
+            $writeResult = file_put_contents($wellKnownFile, $jsonContent);
+            
+            if ($writeResult !== false) {
                 error_log('Passkey Plugin: Updated .well-known/webauthn file successfully');
+                error_log('Passkey Plugin: File size: ' . $writeResult . ' bytes');
+                error_log('Passkey Plugin: File content: ' . $jsonContent);
+                
+                // Verify file was actually written
+                if (file_exists($wellKnownFile)) {
+                    $verifyContent = file_get_contents($wellKnownFile);
+                    error_log('Passkey Plugin: File verification - exists: YES, readable: YES');
+                    error_log('Passkey Plugin: Verified content: ' . $verifyContent);
+                } else {
+                    error_log('Passkey Plugin: WARNING - File write reported success but file does not exist');
+                }
+                
                 return true;
             } else {
                 error_log('Passkey Plugin: Failed to write .well-known/webauthn file');
+                error_log('Passkey Plugin: File writable: ' . (is_writable($wellKnownDir) ? 'YES' : 'NO'));
+                error_log('Passkey Plugin: Directory permissions: ' . substr(sprintf('%o', fileperms($wellKnownDir)), -4));
                 return false;
             }
             
         } catch (Exception $e) {
             error_log('Passkey Plugin: Error updating .well-known file: ' . $e->getMessage());
+            error_log('Passkey Plugin: Error trace: ' . $e->getTraceAsString());
             return false;
         }
     }
@@ -1261,6 +1326,11 @@ class Am_Plugin_Passkey extends Am_Plugin
         if ($formRegistered) {
             return;
         }
+        
+        error_log('Passkey Plugin: onSetupForms called - registering form and forcing well-known update');
+        
+        // Force well-known file update when setup forms are loaded
+        $this->updateWellKnownFile();
         
         try {
             // Use a consistent form ID that doesn't change between requests
