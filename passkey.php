@@ -222,24 +222,50 @@ class Am_Plugin_Passkey extends Am_Plugin
     protected function handlePasskeyConfig($request)
     {
         try {
-            $config = Am_Di::getInstance()->config;
+            $di = Am_Di::getInstance();
+            $config = $di->config;
             $hostname = $_SERVER['HTTP_HOST'];
             
-            // Get configuration from aMember admin settings
+            // Get configuration from aMember admin settings with safe defaults
             $passkeyConfig = [
                 'ok' => true,
                 'rpId' => $hostname,
                 'rpName' => $config->get('site_title', 'aMember'),
-                'timeout' => (int)$config->get('misc.passkey.timeout', 60000),
-                'userVerification' => $config->get('misc.passkey.user_verification', 'preferred'),
-                'authenticatorAttachment' => $config->get('misc.passkey.authenticator_attachment', null),
-                'requireResidentKey' => (bool)$config->get('misc.passkey.require_resident_key', false),
-                'attestation' => $config->get('misc.passkey.attestation', 'none'),
+                'timeout' => 60000, // Default timeout
+                'userVerification' => 'preferred', // Default user verification
+                'authenticatorAttachment' => null, // No preference by default
+                'requireResidentKey' => false, // Not required by default
+                'attestation' => 'none', // Default attestation
                 'endpoints' => [
                     'config' => '/api/passkey/config',
                     'authenticate' => '/api/check-access/by-passkey'
                 ]
             ];
+            
+            // Try to get plugin-specific configuration if available
+            try {
+                $pluginConfig = $config->get('misc.passkey');
+                if ($pluginConfig) {
+                    if (isset($pluginConfig['timeout'])) {
+                        $passkeyConfig['timeout'] = (int)$pluginConfig['timeout'];
+                    }
+                    if (isset($pluginConfig['user_verification'])) {
+                        $passkeyConfig['userVerification'] = $pluginConfig['user_verification'];
+                    }
+                    if (isset($pluginConfig['authenticator_attachment'])) {
+                        $passkeyConfig['authenticatorAttachment'] = $pluginConfig['authenticator_attachment'];
+                    }
+                    if (isset($pluginConfig['require_resident_key'])) {
+                        $passkeyConfig['requireResidentKey'] = (bool)$pluginConfig['require_resident_key'];
+                    }
+                    if (isset($pluginConfig['attestation'])) {
+                        $passkeyConfig['attestation'] = $pluginConfig['attestation'];
+                    }
+                }
+            } catch (Exception $configException) {
+                // If plugin config fails, continue with defaults
+                error_log('Passkey Plugin: Could not load plugin config, using defaults: ' . $configException->getMessage());
+            }
             
             // Remove null values
             $passkeyConfig = array_filter($passkeyConfig, function($value) {
@@ -249,6 +275,7 @@ class Am_Plugin_Passkey extends Am_Plugin
             return $passkeyConfig;
             
         } catch (Exception $e) {
+            error_log('Passkey Plugin: Configuration endpoint error: ' . $e->getMessage());
             return [
                 'ok' => false,
                 'error' => 'Failed to get configuration: ' . $e->getMessage()
