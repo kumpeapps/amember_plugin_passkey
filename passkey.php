@@ -380,6 +380,9 @@ class Am_Plugin_Passkey extends Am_Plugin
                     'wellKnownUrl' => $relatedOriginsData['wellKnownUrl']
                 ];
                 error_log('Passkey Plugin: Added related origins: ' . count($relatedOriginsData['origins']) . ' origins');
+                
+                // Update the well-known file to ensure it's current
+                $this->updateWellKnownFile();
             }
             
         } catch (Exception $configException) {
@@ -552,8 +555,24 @@ class Am_Plugin_Passkey extends Am_Plugin
                 $relatedOrigins = [];
             }
             
+            // Normalize origins to ensure they have https:// prefix
+            $normalizedOrigins = [];
+            foreach ($relatedOrigins as $origin) {
+                $origin = trim($origin);
+                if (empty($origin)) {
+                    continue;
+                }
+                
+                // Add https:// if not present
+                if (!preg_match('/^https?:\/\//', $origin)) {
+                    $origin = 'https://' . $origin;
+                }
+                
+                $normalizedOrigins[] = $origin;
+            }
+            
             // Always include the current host as the primary RP ID
-            $origins = array_unique(array_merge(['https://' . $currentHost], $relatedOrigins));
+            $origins = array_unique(array_merge(['https://' . $currentHost], $normalizedOrigins));
             
             return [
                 'ok' => true,
