@@ -559,6 +559,75 @@ class Am_Plugin_Passkey extends Am_Plugin
     }
 
     /**
+     * Get related origins from configuration (quiet version - no updates)
+     */
+    protected function getRelatedOriginsQuiet()
+    {
+        try {
+            $config = Am_Di::getInstance()->config;
+            $currentHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            
+            // Try multiple possible config key locations
+            $possibleKeys = [
+                'misc.passkey.related_origins',
+                'passkey.related_origins', 
+                'related_origins',
+                'misc.passkey.passkey.related_origins'
+            ];
+            
+            $relatedOriginsConfig = '[]';
+            $usedKey = null;
+            
+            foreach ($possibleKeys as $key) {
+                $value = $config->get($key, null);
+                if ($value !== null) {
+                    $relatedOriginsConfig = $value;
+                    $usedKey = $key;
+                    break;
+                }
+            }
+            
+            $relatedOrigins = json_decode($relatedOriginsConfig, true);
+            
+            if (!is_array($relatedOrigins)) {
+                $relatedOrigins = [];
+            }
+            
+            // Normalize origins to ensure they have https:// prefix
+            $normalizedOrigins = [];
+            foreach ($relatedOrigins as $origin) {
+                $origin = trim($origin);
+                if (empty($origin)) {
+                    continue;
+                }
+                
+                // Add https:// if not present
+                if (!preg_match('/^https?:\/\//', $origin)) {
+                    $origin = 'https://' . $origin;
+                }
+                
+                $normalizedOrigins[] = $origin;
+            }
+            
+            // Always include the current host as the primary RP ID
+            $origins = array_unique(array_merge(['https://' . $currentHost], $normalizedOrigins));
+            
+            return [
+                'ok' => true,
+                'rpId' => $currentHost,
+                'origins' => $origins,
+                'wellKnownUrl' => 'https://' . $currentHost . '/.well-known/webauthn'
+            ];
+            
+        } catch (Exception $e) {
+            return [
+                'ok' => false,
+                'error' => 'Failed to get related origins: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
      * Get current related origins configuration
      */
     protected function getRelatedOrigins()
@@ -589,9 +658,11 @@ class Am_Plugin_Passkey extends Am_Plugin
             
             error_log("Passkey Plugin: Related origins config key used: " . ($usedKey ?: 'none found') . ", value: " . $relatedOriginsConfig);
             
-            // Force trigger well-known file update if we found a config
-            if ($usedKey && !empty($relatedOriginsConfig) && $relatedOriginsConfig !== '[]') {
+            // Force trigger well-known file update if we found a config (but prevent loops)
+            static $updateTriggered = false;
+            if ($usedKey && !empty($relatedOriginsConfig) && $relatedOriginsConfig !== '[]' && !$updateTriggered) {
                 // Update well-known file each time we read the config (ensures it's always current)
+                $updateTriggered = true;
                 $this->updateWellKnownFile();
             }
             
@@ -792,9 +863,28 @@ class Am_Plugin_Passkey extends Am_Plugin
      */
     protected function updateWellKnownFile()
     {
+        // Prevent infinite loops and duplicate calls within the same request
+        static $updateInProgress = false;
+        static $lastUpdate = 0;
+        
+        // If update is already in progress, skip
+        if ($updateInProgress) {
+            error_log('Passkey Plugin: updateWellKnownFile() - Update already in progress, skipping');
+            return false;
+        }
+        
+        // If updated less than 5 seconds ago, skip
+        $now = time();
+        if ($now - $lastUpdate < 5) {
+            error_log('Passkey Plugin: updateWellKnownFile() - Updated recently, skipping');
+            return true;
+        }
+        
+        // Set flag to prevent recursive calls
+        $updateInProgress = true;
+        
         try {
-            // Enhanced logging for debugging
-            error_log('Passkey Plugin: updateWellKnownFile() called');
+            error_log('Passkey Plugin: updateWellKnownFile() called - starting update process');
             
             // Get document root with multiple fallback methods
             $documentRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
@@ -824,7 +914,7 @@ class Am_Plugin_Passkey extends Am_Plugin
             
             if (empty($documentRoot) || !is_dir($documentRoot)) {
                 error_log('Passkey Plugin: Cannot update .well-known file - no valid document root found');
-                error_log('Passkey Plugin: Tried: $_SERVER[DOCUMENT_ROOT], realpath, AM_APPLICATION_PATH, aMember config');
+                $updateInProgress = false;
                 return false;
             }
             
@@ -832,26 +922,23 @@ class Am_Plugin_Passkey extends Am_Plugin
             $wellKnownFile = $wellKnownDir . '/webauthn';
             
             error_log('Passkey Plugin: Document root: ' . $documentRoot);
-            error_log('Passkey Plugin: Well-known dir: ' . $wellKnownDir);
             error_log('Passkey Plugin: Well-known file: ' . $wellKnownFile);
-            error_log('Passkey Plugin: Directory exists: ' . (is_dir($wellKnownDir) ? 'YES' : 'NO'));
-            error_log('Passkey Plugin: Directory writable: ' . (is_writable(dirname($wellKnownDir)) ? 'YES' : 'NO'));
             
             // Create .well-known directory if it doesn't exist
             if (!is_dir($wellKnownDir)) {
                 if (!mkdir($wellKnownDir, 0755, true)) {
                     error_log('Passkey Plugin: Failed to create .well-known directory at: ' . $wellKnownDir);
-                    error_log('Passkey Plugin: Parent directory writable: ' . (is_writable(dirname($wellKnownDir)) ? 'YES' : 'NO'));
-                    error_log('Passkey Plugin: Parent directory exists: ' . (is_dir(dirname($wellKnownDir)) ? 'YES' : 'NO'));
+                    $updateInProgress = false;
                     return false;
                 }
                 error_log('Passkey Plugin: Created .well-known directory successfully');
             }
             
-            // Get current origins
-            $originsData = $this->getRelatedOrigins();
+            // Get current origins WITHOUT triggering another update
+            $originsData = $this->getRelatedOriginsQuiet();
             if (!$originsData['ok']) {
                 error_log('Passkey Plugin: Failed to get origins for .well-known file: ' . ($originsData['error'] ?? 'unknown error'));
+                $updateInProgress = false;
                 return false;
             }
             
@@ -868,28 +955,20 @@ class Am_Plugin_Passkey extends Am_Plugin
             if ($writeResult !== false) {
                 error_log('Passkey Plugin: Updated .well-known/webauthn file successfully');
                 error_log('Passkey Plugin: File size: ' . $writeResult . ' bytes');
-                error_log('Passkey Plugin: File content: ' . $jsonContent);
                 
-                // Verify file was actually written
-                if (file_exists($wellKnownFile)) {
-                    $verifyContent = file_get_contents($wellKnownFile);
-                    error_log('Passkey Plugin: File verification - exists: YES, readable: YES');
-                    error_log('Passkey Plugin: Verified content: ' . $verifyContent);
-                } else {
-                    error_log('Passkey Plugin: WARNING - File write reported success but file does not exist');
-                }
-                
+                // Update the last update time
+                $lastUpdate = $now;
+                $updateInProgress = false;
                 return true;
             } else {
                 error_log('Passkey Plugin: Failed to write .well-known/webauthn file');
-                error_log('Passkey Plugin: File writable: ' . (is_writable($wellKnownDir) ? 'YES' : 'NO'));
-                error_log('Passkey Plugin: Directory permissions: ' . substr(sprintf('%o', fileperms($wellKnownDir)), -4));
+                $updateInProgress = false;
                 return false;
             }
             
         } catch (Exception $e) {
             error_log('Passkey Plugin: Error updating .well-known file: ' . $e->getMessage());
-            error_log('Passkey Plugin: Error trace: ' . $e->getTraceAsString());
+            $updateInProgress = false;
             return false;
         }
     }
