@@ -400,7 +400,10 @@
                 if (authOptions.allowCredentials.length > 0) {
                     console.log('- Desktop 1Password mode: Using specific credential IDs');
                     authOptions.allowCredentials.forEach((cred, i) => {
-                        console.log(`  Credential ${i+1}: ${cred.id.substring(0, 20)}...`);
+                        const idPreview = cred.id.length > 20 ? 
+                            `[Uint8Array ${cred.id.length} bytes: ${Array.from(cred.id.slice(0, 8)).join(',')}...]` :
+                            `[Uint8Array ${cred.id.length} bytes]`;
+                        console.log(`  Credential ${i+1}: ${idPreview}`);
                     });
                 } else {
                     console.log('- Discoverable credentials mode: Any passkey for this RP ID');
