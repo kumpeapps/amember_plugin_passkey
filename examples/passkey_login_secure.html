@@ -345,38 +345,151 @@
         // Main passkey authentication function
         async function authenticateWithPasskey() {
             try {
-                // Ensure configuration is loaded
-                if (!passkeyConfig) {
-                    const configLoaded = await loadPasskeyConfig();
-                    if (!configLoaded) {
-                        return;
-                    }
-                }
+                // CRITICAL: Preserve user gesture context - do minimal checks first
+                console.log('🚀 Button clicked - preserving user gesture context');
                 
-                showStatus('🔍 Checking WebAuthn support and 1Password extension...');
-                
-                // Check if WebAuthn is supported
+                // Basic WebAuthn support check (synchronous)
                 if (!window.PublicKeyCredential) {
                     throw new Error('WebAuthn is not supported in this browser');
                 }
                 
-                // Check 1Password extension availability
-                const onePasswordInfo = await checkOnePasswordAvailability();
-                console.log('1Password extension check:', onePasswordInfo);
-                
-                if (!onePasswordInfo.webauthnSupported) {
-                    throw new Error('WebAuthn API not available');
+                if (!navigator.credentials || !navigator.credentials.get) {
+                    throw new Error('WebAuthn credentials API not available');
                 }
                 
-                if (!onePasswordInfo.likely1PasswordPresent) {
-                    console.warn('⚠️ 1Password extension may not be installed or enabled');
-                    console.warn('Desktop authentication may not work - consider using mobile device');
+                showStatus('🔑 Starting authentication - preserving click context...');
+                loginButton.disabled = true;
+                
+                // Use cached config if available, otherwise use defaults to preserve user gesture
+                const config = passkeyConfig || {
+                    rpId: 'www.kumpeapps.com',
+                    timeout: 60000,
+                    userVerification: 'preferred'
+                };
+                
+                // Create authentication options immediately (synchronous)
+                const authOptions = {
+                    challenge: crypto.getRandomValues(new Uint8Array(32)),
+                    timeout: parseInt(config.timeout) || 60000,
+                    rpId: String(config.rpId || 'www.kumpeapps.com'),
+                    userVerification: String(config.userVerification || 'preferred'),
+                    allowCredentials: []  // Empty for discoverable credentials
+                };
+                
+                console.log('🎯 About to call navigator.credentials.get for MANUAL authentication...');
+                console.log('🔧 navigator.credentials available:', !!navigator.credentials);
+                console.log('🔧 navigator.credentials.get available:', typeof navigator.credentials.get);
+                
+                // CRITICAL: Call WebAuthn immediately while user gesture is still active
+                const webauthnPromise = navigator.credentials.get({
+                    publicKey: authOptions
+                    // NO mediation parameter for manual authentication - this is user-initiated
+                });
+                
+                console.log('🚀 Manual WebAuthn promise created, waiting for response...');
+                
+                // Race against timeout to detect hanging
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('MANUAL WebAuthn call timed out after 10 seconds')), 10000);
+                });
+                
+                let credential;
+                try {
+                    credential = await Promise.race([webauthnPromise, timeoutPromise]);
+                    console.log('✅ Manual WebAuthn success! Credential received:', credential?.id || 'unknown');
+                } catch (raceError) {
+                    console.error('🚨 Manual WebAuthn race error:', raceError.message);
+                    // Try to get the original promise result anyway
+                    try {
+                        console.log('🔄 Attempting to resolve original manual promise...');
+                        credential = await webauthnPromise;
+                        console.log('✅ Late manual WebAuthn success:', credential?.id || 'unknown');
+                    } catch (originalError) {
+                        console.error('💥 Original manual WebAuthn error:', originalError);
+                        throw originalError;
+                    }
+                }
+                
+                // Now do the post-authentication processing (config loading can happen here)
+                if (!passkeyConfig) {
+                    console.log('🔄 Loading full configuration after authentication...');
+                    await loadPasskeyConfig();
+                }
+                
+                // Process the successful credential
+                showStatus('📡 Verifying passkey credential...');
+                
+                const credentialData = {
+                    id: credential.id,
+                    rawId: arrayBufferToBase64url(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+                        authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
+                        signature: arrayBufferToBase64url(credential.response.signature),
+                        userHandle: credential.response.userHandle ? 
+                            arrayBufferToBase64url(credential.response.userHandle) : null
+                    },
+                    challenge: arrayBufferToBase64url(authOptions.challenge)
+                };
+                
+                console.log('📦 Credential data prepared:', {
+                    id: credentialData.id,
+                    type: credentialData.type,
+                    hasUserHandle: !!credentialData.response.userHandle
+                });
+                
+                // Send to server for verification
+                const verifyResponse = await fetch('secure_passkey_auth.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': passkeyConfig?.apiKey || ''
+                    },
+                    body: JSON.stringify({
+                        action: 'verify',
+                        credential: credentialData
+                    })
+                });
+                
+                if (!verifyResponse.ok) {
+                    throw new Error(`Verification failed: ${verifyResponse.status} ${verifyResponse.statusText}`);
+                }
+                
+                const result = await verifyResponse.json();
+                
+                if (result.success) {
+                    showStatus(`✅ Authentication successful! Welcome ${result.user?.name || result.user?.login || 'user'}!`, 'success');
+                    console.log('🎉 Authentication complete:', result);
                 } else {
-                    console.log('✅ 1Password extension appears to be present');
+                    throw new Error(result.error || 'Authentication verification failed');
                 }
                 
-                // Desktop 1Password compatibility: Add user interaction confirmation
-                showStatus('🖱️ Click detected - preparing authentication...');
+            } else {
+                    throw new Error(result.error || 'Authentication verification failed');
+                }
+                
+            } catch (error) {
+                console.error('❌ WebAuthn error:', error);
+                console.error('Error details:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                
+                // Enhanced 1Password-specific error handling  
+                if (error.name === 'NotAllowedError') {
+                    showStatus('❌ Authentication cancelled or no passkey available. Please try again or use mobile device.', 'error');
+                } else if (error.message?.includes('timeout')) {
+                    showStatus('❌ Authentication timed out. Please try again.', 'error');
+                } else {
+                    showStatus(`❌ Authentication failed: ${error.message}`, 'error');
+                }
+            } finally {
+                loginButton.disabled = false;
+            }
+        }
+        }
                 
                 // Desktop optimization: Longer delay for 1Password to be ready
                 console.log('Desktop compatibility: Adding delay for 1Password readiness...');
