@@ -413,7 +413,9 @@
                                         
                                         allowCredentials.push({
                                             type: 'public-key',
-                                            id: credentialId
+                                            id: credentialId,
+                                            // Explicitly include all transports for 1Password compatibility
+                                            transports: ['internal', 'usb', 'nfc', 'ble', 'smart-card', 'hybrid']
                                         });
                                         console.log('✅ Successfully processed credential', allowCredentials.length);
                                     } catch (e) {
@@ -447,6 +449,21 @@
                     allowCredentials: allowCredentials
                 };
                 
+                // CRITICAL: Add authenticatorSelection for 1Password desktop compatibility
+                // Based on aMember implementation experience
+                if (onePasswordInfo.likely1PasswordPresent && allowCredentials.length > 0) {
+                    console.log('🎯 Adding authenticatorSelection for 1Password desktop compatibility');
+                    authOptions.authenticatorSelection = {
+                        // Allow both platform and cross-platform authenticators
+                        authenticatorAttachment: undefined, // Don't restrict attachment type
+                        userVerification: 'preferred',
+                        residentKey: 'preferred', // Allow both resident and non-resident keys
+                        requireResidentKey: false // Don't require resident keys
+                    };
+                } else {
+                    console.log('🔄 Omitting authenticatorSelection for maximum compatibility');
+                }
+                
                 // Validate authOptions before use
                 if (!authOptions.challenge || authOptions.challenge.length !== 32) {
                     throw new Error('Invalid challenge generated');
@@ -457,14 +474,6 @@
                 if (!Array.isArray(authOptions.allowCredentials)) {
                     throw new Error('Invalid allowCredentials format');
                 }
-                
-                // Build authenticator selection based on configuration  
-                // IMPORTANT: For desktop 1Password compatibility, we're removing ALL restrictions
-                // Desktop 1Password is very picky about authenticator selection options
-                
-                // Don't add ANY authenticatorSelection for maximum compatibility
-                // This allows desktop 1Password, mobile passkeys, and hardware keys to all work
-                console.log('Maximum compatibility mode - no authenticator restrictions for desktop 1Password compatibility');
                 
                 console.log('WebAuthn auth options:', authOptions);
                 
