@@ -1838,6 +1838,76 @@ class Am_Plugin_Passkey extends Am_Plugin
             }
         }
         
+        // DIRECT CHECK-ACCESS API HANDLING - Check if this is the check-access endpoint
+        if (preg_match('#/api/(check-access/by-passkey|check-access-by-passkey|passkey-check-access)#', $currentUri)) {
+            error_log('Passkey Plugin: DIRECT CHECK-ACCESS API CALL detected - ' . $currentUri);
+            
+            // Check API authentication before processing
+            $apiKey = isset($_GET['_key']) ? $_GET['_key'] : (isset($_SERVER['HTTP_X_API_KEY']) ? $_SERVER['HTTP_X_API_KEY'] : '');
+            if (!$apiKey) {
+                // Also check Authorization header
+                $headers = getallheaders();
+                if (isset($headers['Authorization']) && preg_match('/Bearer\s+(.+)/', $headers['Authorization'], $matches)) {
+                    $apiKey = $matches[1];
+                }
+            }
+            
+            error_log('Passkey Plugin: CHECK-ACCESS API Key provided: ' . ($apiKey ? 'YES' : 'NO'));
+            error_log('Passkey Plugin: Request method: ' . $_SERVER['REQUEST_METHOD']);
+            error_log('Passkey Plugin: All headers: ' . json_encode(getallheaders()));
+            
+            if (!$this->checkApiPermission($apiKey, 'by-login-pass')) {
+                error_log('Passkey Plugin: CHECK-ACCESS API authentication FAILED for key: ' . substr($apiKey, 0, 10) . '...');
+                header('Content-Type: application/json');
+                http_response_code(403);
+                echo json_encode([
+                    'ok' => false,
+                    'error' => true,
+                    'message' => 'API authentication failed'
+                ]);
+                exit;
+            }
+            
+            error_log('Passkey Plugin: CHECK-ACCESS API authentication PASSED');
+            
+            // Handle the API call directly since hooks might not be working
+            try {
+                error_log('Passkey Plugin: Attempting direct check-access API response');
+                
+                // Create a mock request object for the handler
+                $request = new stdClass();
+                $request->getRawBody = function() {
+                    return file_get_contents('php://input');
+                };
+                $request->getPost = function() {
+                    return $_POST;
+                };
+                $request->getParam = function($name) {
+                    return $_GET[$name] ?? null;
+                };
+                
+                $result = $this->handlePasskeyCheckAccess($request);
+                
+                error_log('Passkey Plugin: Direct check-access API result: ' . json_encode($result));
+                
+                // Send the response
+                header('Content-Type: application/json');
+                echo json_encode($result);
+                exit;
+                
+            } catch (Exception $e) {
+                error_log('Passkey Plugin: Direct check-access API error: ' . $e->getMessage());
+                header('Content-Type: application/json');
+                http_response_code(500);
+                echo json_encode([
+                    'ok' => false,
+                    'error' => true,
+                    'message' => 'Internal error: ' . $e->getMessage()
+                ]);
+                exit;
+            }
+        }
+        
         // DIRECT .well-known/webauthn HANDLING - No authentication required (public file)
         if (strpos($currentUri, '/.well-known/webauthn') !== false) {
             error_log('Passkey Plugin: DIRECT .well-known/webauthn request detected');
