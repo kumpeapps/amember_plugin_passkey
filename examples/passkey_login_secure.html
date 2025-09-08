@@ -735,21 +735,27 @@
         // CRITICAL: Start conditional autofill for 1Password compatibility
         // This matches the aMember plugin approach for desktop 1Password support
         async function startConditionalAutofill() {
+            console.log('🔍 startConditionalAutofill() called');
+            
             if (!window.PublicKeyCredential || !navigator.credentials) {
-                console.log('WebAuthn not supported - skipping conditional autofill');
+                console.log('❌ WebAuthn not supported - skipping conditional autofill');
                 return;
             }
+            
+            console.log('✅ WebAuthn supported, proceeding with conditional autofill');
             
             try {
                 console.log('🔄 Starting conditional autofill for 1Password desktop compatibility...');
                 
                 // Load configuration first
                 if (!passkeyConfig) {
+                    console.log('⚙️ Loading configuration for conditional autofill...');
                     const configLoaded = await loadPasskeyConfig();
                     if (!configLoaded) {
-                        console.log('Failed to load config for conditional autofill');
+                        console.log('❌ Failed to load config for conditional autofill');
                         return;
                     }
+                    console.log('✅ Configuration loaded for conditional autofill');
                 }
                 
                 // Create authentication options (same as manual login but for conditional autofill)
@@ -762,12 +768,15 @@
                 };
                 
                 console.log('🎯 Starting conditional WebAuthn request for 1Password...');
+                console.log('Conditional auth options:', authOptions);
                 
                 // Start conditional mediation - this allows 1Password to intercept
                 const credential = await navigator.credentials.get({
                     publicKey: authOptions,
                     mediation: "conditional"
                 });
+                
+                console.log('📦 Conditional credential result:', credential);
                 
                 if (credential) {
                     console.log('✅ Conditional autofill credential received! Processing...');
@@ -803,13 +812,18 @@
                             displayUserInfo(result);
                             loginButton.style.display = 'none'; // Hide manual login button
                         } else {
-                            console.log('Conditional autofill auth failed:', result.error);
+                            console.log('❌ Conditional autofill auth failed:', result.error);
                         }
+                    } else {
+                        console.log('❌ Conditional autofill request failed:', response.status);
                     }
+                } else {
+                    console.log('ℹ️ No credential returned from conditional autofill (this is normal)');
                 }
                 
             } catch (error) {
-                console.log('Conditional autofill not available or failed:', error.message);
+                console.log('⚠️ Conditional autofill error:', error.name, '-', error.message);
+                console.error('Full conditional autofill error:', error);
                 // This is normal - not all browsers/extensions support it
             }
         }
