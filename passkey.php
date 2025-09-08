@@ -538,14 +538,9 @@ class Am_Plugin_Passkey extends Am_Plugin
         $hostname = $_SERVER['HTTP_HOST'] ?? 'localhost';
         error_log('Passkey Plugin: Got hostname: ' . $hostname);
         
-        // Start with minimal configuration
+        // Start with minimal configuration (will be overridden by aMember settings)
         $passkeyConfig = [
             'ok' => true,
-            'rpId' => $hostname,
-            'rpName' => 'aMember',
-            'timeout' => 60000,
-            'userVerification' => 'preferred',
-            'attestation' => 'none',
             'endpoints' => [
                 'config' => '/api/passkey/config',
                 'authenticate' => '/api/check-access/by-passkey'
@@ -570,6 +565,8 @@ class Am_Plugin_Passkey extends Am_Plugin
             error_log('Passkey Plugin: Got WebAuthn config: ' . json_encode($webAuthnConfig));
             
             // Update configuration with aMember settings
+            $passkeyConfig['rpName'] = $webAuthnConfig['rp_name'];
+            $passkeyConfig['rpId'] = $webAuthnConfig['rp_id'];
             $passkeyConfig['timeout'] = $webAuthnConfig['timeout'];
             $passkeyConfig['userVerification'] = $webAuthnConfig['user_verification'];
             $passkeyConfig['attestation'] = $webAuthnConfig['attestation'];
@@ -577,9 +574,7 @@ class Am_Plugin_Passkey extends Am_Plugin
             $passkeyConfig['requireResidentKey'] = $webAuthnConfig['require_resident_key'];
             $passkeyConfig['authenticatorAttachment'] = $webAuthnConfig['authenticator_attachment'];
             
-            $siteTitle = $config->get('site_title', 'aMember');
-            $passkeyConfig['rpName'] = $siteTitle;
-            error_log('Passkey Plugin: Enhanced with aMember WebAuthn settings and site title: ' . $siteTitle);
+            error_log('Passkey Plugin: Enhanced with aMember WebAuthn settings - rpName: ' . $webAuthnConfig['rp_name'] . ', rpId: ' . $webAuthnConfig['rp_id']);
             
             // Add related origins configuration
             $relatedOriginsData = $this->getRelatedOrigins();
@@ -5219,6 +5214,8 @@ window.safeWebAuthnGet = async function(options) {
         $config = Am_Di::getInstance()->config;
         
         return [
+            'rp_name' => $config->get('misc.passkey.rp_name') ?: $config->get('site_title', 'aMember'),
+            'rp_id' => $config->get('misc.passkey.rp_id') ?: $_SERVER['HTTP_HOST'],
             'timeout' => (int)($config->get('misc.passkey.timeout') ?: 60000),
             'user_verification' => $config->get('misc.passkey.user_verification') ?: 'preferred',
             'resident_key' => $config->get('misc.passkey.resident_key') ?: 'discouraged', // Discouraged by default for better external security key support

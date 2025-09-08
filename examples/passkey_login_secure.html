@@ -80,6 +80,36 @@
             border-radius: 3px;
             font-family: 'Courier New', monospace;
         }
+        .config-grid {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .config-item {
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #config-display {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+        #config-display h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        #config-display h4 {
+            margin-bottom: 10px;
+            color: #6c757d;
+        }
+        #config-display ul {
+            margin: 0;
+            padding-left: 20px;
+        }
     </style>
 </head>
 <body>
@@ -103,13 +133,15 @@
             🔑 Sign in with Passkey
         </button>
         
-        <div id="userInfo" class="user-info" style="display: none;">
-            <h3>✅ Login Successful!</h3>
-            <p><strong>User ID:</strong> <span id="userId"></span></p>
-            <p><strong>Name:</strong> <span id="userName"></span></p>
-            <p><strong>Email:</strong> <span id="userEmail"></span></p>
-            <p><strong>Access:</strong> <span id="userAccess"></span></p>
+                <div id="user-info" class="user-info" style="display: none;">
+            <!-- User authentication result will be displayed here -->
         </div>
+
+        <!-- Configuration Display -->
+        <div id="config-display">
+            <!-- aMember WebAuthn configuration will be displayed here -->
+        </div>
+    </div>
         
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
             <h3>How it works:</h3>
@@ -190,6 +222,10 @@
                 
                 passkeyConfig = config;
                 showStatus('✅ Configuration loaded from aMember!', 'success');
+                
+                // Display the configuration settings for debugging
+                displayConfigurationSettings(config);
+                
                 return true;
                 
             } catch (error) {
@@ -309,6 +345,40 @@
             } finally {
                 loginButton.disabled = false;
             }
+        }
+
+        // Display configuration settings from aMember
+        function displayConfigurationSettings(config) {
+            const configDisplay = document.getElementById('config-display');
+            if (!configDisplay) return;
+            
+            const settings = [
+                { label: 'Enable Passkey Login', value: config.ok ? 'Yes' : 'No' },
+                { label: 'Relying Party Name', value: config.rpName || 'Not set' },
+                { label: 'Relying Party ID', value: config.rpId || 'Not set' },
+                { label: 'Authentication Timeout (ms)', value: config.timeout || 'Not set' },
+                { label: 'User Verification Requirement', value: config.userVerification || 'Not set' },
+                { label: 'Resident Key Preference', value: config.residentKey || 'Not set' },
+                { label: 'Require Resident Key Support', value: config.requireResidentKey !== undefined ? (config.requireResidentKey ? 'Yes' : 'No') : 'Not set' },
+                { label: 'Attestation Preference', value: config.attestation || 'Not set' },
+                { label: 'Authenticator Attachment', value: config.authenticatorAttachment || 'Any' }
+            ];
+            
+            let html = '<h3>🔧 aMember WebAuthn Configuration</h3><div class="config-grid">';
+            settings.forEach(setting => {
+                html += `<div class="config-item"><strong>${setting.label}:</strong> ${setting.value}</div>`;
+            });
+            html += '</div>';
+            
+            if (config.relatedOrigins && config.relatedOrigins.origins) {
+                html += '<h4>🌐 Related Origins</h4><ul>';
+                config.relatedOrigins.origins.forEach(origin => {
+                    html += `<li>${origin}</li>`;
+                });
+                html += '</ul>';
+            }
+            
+            configDisplay.innerHTML = html;
         }
         
         // Event listeners
