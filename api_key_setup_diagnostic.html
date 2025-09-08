@@ -1,8 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charse        <h4>Required Database Table: <code>am_api_key</code></h4>
+        <p>Your API key needs an entry with BOTH permissions:</p>
+        <pre>UPDATE am_api_key 
+SET perms = '{"check-access":{"by-login-pass":1,"post":1}}' 
+WHERE `key` = 'U0ZW8TJru85iAmzwGGd9';</pre>
+
+        <h4>Alternative: Complete INSERT if needed:</h4>
+        <pre>INSERT INTO am_api_key (
+    `key`, 
+    `perms`, 
+    `is_disabled`, 
+    `name`
+) VALUES (
+    'U0ZW8TJru85iAmzwGGd9',
+    '{"check-access":{"by-login-pass":1,"post":1}}',
+    0,
+    'Passkey Authentication Test Key'
+);</pre>   <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>API Key Setup Diagnostic</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
@@ -22,60 +38,99 @@
     
     <div class="diagnostic-section">
         <h2>📊 Current Status</h2>
-        <p class="error">❌ API Error 10002 - [key] is not found or disabled</p>
-        <p>Your API key <code>U0ZW8TJru85iAmzwGGd9</code> is either:</p>
+        <p class="warning">⚠️ API Error 10003 - no permissions for check-access-post API call</p>
+        <p><strong>Progress:</strong> ✅ API key found and enabled → ❌ Missing required permissions</p>
+        <p>Your API key <code>U0ZW8TJru85iAmzwGGd9</code> is now in the database but needs additional permissions.</p>
+        
+        <h3>🎯 Required Permissions</h3>
+        <p>For the passkey authentication endpoint to work, your API key needs:</p>
         <ul>
-            <li>Not configured in your aMember system</li>
-            <li>Disabled</li>
-            <li>Missing the required <code>by-login-pass</code> permission</li>
+            <li>✅ <code>by-login-pass</code> - Basic authentication permission</li>
+            <li>❌ <code>check-access-post</code> - Permission for POST requests to check-access endpoint</li>
         </ul>
     </div>
 
     <div class="diagnostic-section">
         <h2>🔍 How to Fix This</h2>
         
-        <h3>Option 1: Create/Configure API Key in aMember Admin</h3>
+        <h3>Option 1: aMember Admin Panel - Try These Permissions</h3>
+        <p><strong>Issue:</strong> The admin panel doesn't show a "post" option under check-access.</p>
+        <p><strong>Try these alternatives in your API key permissions:</strong></p>
         <ol>
-            <li>Log into your <strong>aMember Admin Panel</strong></li>
-            <li>Go to <strong>Setup/Configuration → API Keys</strong></li>
-            <li>Either find the existing key <code>U0ZW8TJru85iAmzwGGd9</code> or create a new one</li>
-            <li>Make sure it has the <strong>check-access → by-login-pass</strong> permission enabled</li>
-            <li>Ensure it's <strong>not disabled</strong></li>
+            <li>Look for <strong>check-access</strong> (general) - enable ALL sub-options available</li>
+            <li>Look for <strong>check-access-by-login-pass</strong> (specific method)</li>
+            <li>Look for <strong>check-access-by-*</strong> (any related options)</li>
+            <li>Try enabling <strong>ALL check-access permissions</strong> available in the dropdown</li>
+            <li>If available, try adding <strong>general API access</strong> or <strong>full API</strong> permissions</li>
         </ol>
         
-        <h3>Option 2: Database Setup (Manual)</h3>
-        <p>If you need to set this up manually in the database:</p>
+        <h4>📋 What to Look For in Admin Panel:</h4>
+        <ul>
+            <li>✅ check-access → by-login-pass (you have this)</li>
+            <li>❓ check-access → by-* (any other options)</li>
+            <li>❓ check-access → * (any general options)</li>
+            <li>❓ api → * (general API permissions)</li>
+        </ul>
         
-        <h4>Required Database Table: <code>am_api_key</code></h4>
-        <p>Your API key needs an entry like this:</p>
-        <pre>INSERT INTO am_api_key (
-    `key`, 
-    `perms`, 
-    `is_disabled`, 
-    `name`
-) VALUES (
-    'U0ZW8TJru85iAmzwGGd9',
-    '{"check-access":{"by-login-pass":1}}',
-    0,
-    'Passkey Authentication Test Key'
-);</pre>
+                <h3>Option 2: Database Setup - Try Different Permission Formats</h3>
+        <p>Since the admin panel doesn't have "post", try these database updates:</p>
+        
+        <h4>Try #1: Add general check-access permission</h4>
+        <pre>UPDATE am_api_key 
+SET perms = '{"check-access":{"by-login-pass":1,"*":1}}' 
+WHERE `key` = 'U0ZW8TJru85iAmzwGGd9';</pre>
 
-        <h4>Alternative Permission Format:</h4>
-        <p>The permissions can also be stored as:</p>
-        <pre>'{"by-login-pass":1}'</pre>
-        <p>Or as comma-separated:</p>
-        <pre>'by-login-pass'</pre>
+        <h4>Try #2: Add broader API permissions</h4>
+        <pre>UPDATE am_api_key 
+SET perms = '{"check-access":1,"api":1}' 
+WHERE `key` = 'U0ZW8TJru85iAmzwGGd9';</pre>
+
+        <h4>Try #3: Use comma-separated format with multiple permissions</h4>
+        <pre>UPDATE am_api_key 
+SET perms = 'check-access,by-login-pass,api' 
+WHERE `key` = 'U0ZW8TJru85iAmzwGGd9';</pre>
+
+        <h4>Try #4: Full access (for testing)</h4>
+        <pre>UPDATE am_api_key 
+SET perms = '*' 
+WHERE `key` = 'U0ZW8TJru85iAmzwGGd9';</pre>
+    </div>
+
+    <div class="diagnostic-section">
+        <h2>� Troubleshooting Steps</h2>
+        
+        <h3>Step 1: Check Available Permissions in Admin Panel</h3>
+        <ol>
+            <li>Go to your aMember admin → Setup/Configuration → API Keys</li>
+            <li>Edit your key <code>U0ZW8TJru85iAmzwGGd9</code></li>
+            <li>Take a screenshot of ALL available permission options</li>
+            <li>Look specifically for anything containing:
+                <ul>
+                    <li><code>check-access</code></li>
+                    <li><code>api</code></li>
+                    <li><code>post</code></li>
+                    <li><code>*</code> (wildcard/all)</li>
+                </ul>
+            </li>
+        </ol>
+        
+        <h3>Step 2: Try Full Permissions (Testing)</h3>
+        <p>As a test, try enabling <strong>ALL</strong> available permissions for this API key to see if that resolves the issue.</p>
+        
+        <h3>Step 3: Alternative - Bypass aMember API System</h3>
+        <p>If the permission issue persists, we might need to modify the plugin to handle the authentication differently or bypass aMember's standard API permission system for this specific endpoint.</p>
     </div>
 
     <div class="diagnostic-section">
         <h2>🚀 Next Steps</h2>
         <ol>
-            <li><strong>Set up your API key</strong> using one of the methods above</li>
+            <li><strong>Try the admin panel solutions above</strong> - enable ALL available check-access permissions</li>
+            <li><strong>Or try the database updates</strong> - start with Try #4 (full access) for testing</li>
             <li><strong>Test again</strong> by refreshing the API test page</li>
-            <li>You should then see different errors related to the actual passkey authentication instead of API key issues</li>
+            <li>If still getting permission errors, we may need to modify the plugin approach</li>
         </ol>
         
-        <p class="info">💡 <strong>Expected Next Error:</strong> Once the API key is properly configured, you'll likely see errors like "Invalid credential format" or "User not found" which indicates the API authentication is working and it's processing your passkey requests.</p>
+        <p class="info">💡 <strong>Expected Next Result:</strong> Once the permission issue is resolved, you should see errors related to the actual passkey validation rather than API permission errors.</p>
     </div>
 
     <div class="diagnostic-section">

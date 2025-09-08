@@ -252,11 +252,21 @@ class Am_Plugin_Passkey extends Am_Plugin
             // Check for API key in headers or query params
             $apiKey = null;
             $headers = getallheaders();
-            if (isset($headers['Authorization'])) {
+            error_log('Passkey Plugin: onBeforeOutput - All headers: ' . json_encode($headers));
+            
+            // Check X-API-Key header (preferred method)
+            if (isset($headers['X-API-Key'])) {
+                $apiKey = $headers['X-API-Key'];
+                error_log('Passkey Plugin: onBeforeOutput - Found API key in X-API-Key header');
+            }
+            // Fallback: Check Authorization Bearer header
+            elseif (isset($headers['Authorization'])) {
                 if (preg_match('/Bearer\s+(.+)/', $headers['Authorization'], $matches)) {
                     $apiKey = $matches[1];
+                    error_log('Passkey Plugin: onBeforeOutput - Found API key in Authorization header');
                 }
             }
+            // Fallback: Check query parameter
             if (!$apiKey && isset($_GET['_key'])) {
                 $apiKey = $_GET['_key'];
             }
