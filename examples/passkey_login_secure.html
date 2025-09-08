@@ -593,16 +593,38 @@
                     
                     showStatus('🔐 Calling WebAuthn API - Safari will present available passkey options...');
                     
-                    console.log('🎯 About to call navigator.credentials.get with conditional mediation...');
+                    console.log('🎯 About to call navigator.credentials.get for MANUAL authentication...');
+                    console.log('🔧 navigator.credentials available:', !!navigator.credentials);
+                    console.log('🔧 navigator.credentials.get available:', typeof navigator.credentials.get);
                     
-                    // CRITICAL: Use conditional mediation for 1Password desktop compatibility
-                    // This matches the aMember plugin implementation exactly
-                    credential = await navigator.credentials.get({
-                        publicKey: authOptions,
-                        mediation: "conditional"  // Key for 1Password desktop extension support
+                    // Add timeout wrapper to catch hanging calls
+                    const webauthnPromise = navigator.credentials.get({
+                        publicKey: authOptions
+                        // NO mediation parameter for manual authentication - this is user-initiated
                     });
                     
-                    console.log('✅ WebAuthn success! Credential received:', credential?.id || 'unknown');
+                    console.log('🚀 Manual WebAuthn promise created, waiting for response...');
+                    
+                    // Race against timeout to detect hanging
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('MANUAL WebAuthn call timed out after 10 seconds')), 10000);
+                    });
+                    
+                    try {
+                        credential = await Promise.race([webauthnPromise, timeoutPromise]);
+                        console.log('✅ Manual WebAuthn success! Credential received:', credential?.id || 'unknown');
+                    } catch (raceError) {
+                        console.error('🚨 Manual WebAuthn race error:', raceError.message);
+                        // Try to get the original promise result anyway
+                        try {
+                            console.log('🔄 Attempting to resolve original manual promise...');
+                            credential = await webauthnPromise;
+                            console.log('✅ Late manual WebAuthn success:', credential?.id || 'unknown');
+                        } catch (originalError) {
+                            console.error('💥 Original manual WebAuthn error:', originalError);
+                            throw originalError;
+                        }
+                    }
                     
                 } catch (webauthnError) {
                     console.error('❌ WebAuthn error:', webauthnError);
@@ -769,12 +791,38 @@
                 
                 console.log('🎯 Starting conditional WebAuthn request for 1Password...');
                 console.log('Conditional auth options:', authOptions);
+                console.log('🔧 navigator.credentials available for conditional:', !!navigator.credentials);
+                console.log('🔧 navigator.credentials.get available for conditional:', typeof navigator.credentials.get);
                 
-                // Start conditional mediation - this allows 1Password to intercept
-                const credential = await navigator.credentials.get({
+                // Add timeout wrapper to catch hanging calls in conditional mode
+                const conditionalPromise = navigator.credentials.get({
                     publicKey: authOptions,
                     mediation: "conditional"
                 });
+                
+                console.log('🚀 Conditional WebAuthn promise created, waiting for response...');
+                
+                // Race against timeout to detect hanging in conditional mode
+                const conditionalTimeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Conditional WebAuthn call timed out after 15 seconds')), 15000);
+                });
+                
+                let credential;
+                try {
+                    credential = await Promise.race([conditionalPromise, conditionalTimeoutPromise]);
+                    console.log('✅ Conditional WebAuthn success! Credential received:', credential?.id || 'unknown');
+                } catch (raceError) {
+                    console.error('🚨 Conditional WebAuthn race error:', raceError.message);
+                    // Try to get the original promise result anyway
+                    try {
+                        console.log('🔄 Attempting to resolve original conditional promise...');
+                        credential = await conditionalPromise;
+                        console.log('✅ Late conditional WebAuthn success:', credential?.id || 'unknown');
+                    } catch (originalError) {
+                        console.error('💥 Original conditional WebAuthn error:', originalError);
+                        throw originalError;
+                    }
+                }
                 
                 console.log('📦 Conditional credential result:', credential);
                 
