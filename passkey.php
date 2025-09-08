@@ -752,8 +752,9 @@ class Am_Plugin_Passkey extends Am_Plugin
             $di = Am_Di::getInstance();
             $db = $di->db;
             
-            // Get all stored passkey credentials using aMember database syntax
-            $credentials = $db->selectPage("SELECT credential_id, user_id FROM ?_passkey_credentials", 0, 1000);
+            // Get all stored passkey credentials using correct aMember database syntax
+            $total = 0;
+            $credentials = $db->selectPage($total, "SELECT credential_id, user_id FROM ?_passkey_credentials");
             
             $allowCredentials = [];
             
