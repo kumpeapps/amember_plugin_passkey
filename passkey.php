@@ -1249,6 +1249,16 @@ class Am_Plugin_Passkey extends Am_Plugin
          */
         protected function verifyPasskeyCredential($user, $credential)
         {
+            // Load Composer autoload before using WebAuthn
+            $autoloadPath = $this->getAutoloadPath();
+            if ($autoloadPath && file_exists($autoloadPath)) {
+                require_once $autoloadPath;
+                error_log('Passkey Plugin: Loaded autoload for WebAuthn verification: ' . $autoloadPath);
+            } else {
+                error_log('Passkey Plugin: ERROR - vendor/autoload.php not found, cannot verify credential');
+                return false;
+            }
+
             // Use WebAuthn library to verify the credential
             // This is a simplified example, you may need to adapt to your WebAuthn library
             try {
