@@ -430,6 +430,10 @@ class Am_Plugin_Passkey extends Am_Plugin
             
             $credential = isset($data['credential']) ? $data['credential'] : null;
             error_log('Passkey Plugin: Credential present: ' . ($credential ? 'YES' : 'NO'));
+            if ($credential) {
+                error_log('Passkey Plugin: Credential data: ' . json_encode($credential));
+                error_log('Passkey Plugin: Credential ID from data: ' . (isset($credential['id']) ? $credential['id'] : 'none'));
+            }
             
             $result = [
                 'ok' => false,
@@ -1200,6 +1204,13 @@ class Am_Plugin_Passkey extends Am_Plugin
                 // Find passkey record by credential_id
                 $row = $db->selectRow('SELECT * FROM ?_passkey_credentials WHERE credential_id = ?', $credentialId);
                 error_log('Passkey Plugin: Database query result: ' . ($row ? 'found record' : 'no record found'));
+                if ($row) {
+                    error_log('Passkey Plugin: Found record data: ' . json_encode($row));
+                }
+                
+                // Also try a broader search to see what records exist
+                $allRows = $db->selectCol('SELECT credential_id FROM ?_passkey_credentials LIMIT 5');
+                error_log('Passkey Plugin: All credential IDs in database: ' . json_encode($allRows));
                 
                 if ($row && !empty($row['user_id'])) {
                     error_log('Passkey Plugin: Found user_id: ' . $row['user_id']);
