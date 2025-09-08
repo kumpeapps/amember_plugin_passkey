@@ -133,6 +133,25 @@
             🔑 Sign in with Passkey
         </button>
         
+        <div style="margin-top: 15px;">
+            <details>
+                <summary style="cursor: pointer; color: #6c757d; font-size: 14px;">
+                    💻 Desktop 1Password troubleshooting
+                </summary>
+                <div style="margin-top: 10px; padding: 15px; background: #f8f9fa; border-radius: 6px; font-size: 14px;">
+                    <p><strong>If 1Password doesn't respond on desktop:</strong></p>
+                    <ol>
+                        <li>Make sure 1Password browser extension is enabled</li>
+                        <li>Try refreshing the page and clicking login again</li>
+                        <li>Check if other browser extensions are interfering</li>
+                        <li>Try in an incognito/private window</li>
+                        <li><strong>Mobile workaround:</strong> Open this page on your phone and scan the QR code</li>
+                    </ol>
+                    <p style="margin-top: 10px; color: #6c757d;"><em>Note: Mobile passkey authentication is generally more reliable than desktop browser extensions.</em></p>
+                </div>
+            </details>
+        </div>
+        
                 <div id="user-info" class="user-info" style="display: none;">
             <!-- User authentication result will be displayed here -->
         </div>
@@ -178,9 +197,40 @@
         // Configuration will be loaded from server
         let passkeyConfig = null;
         
-        // Utility function to show status messages
+        // Platform detection for better user guidance
+        function getPlatformInfo() {
+            const userAgent = navigator.userAgent;
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+            const isDesktop = !isMobile;
+            const isChrome = /Chrome/.test(userAgent);
+            const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+            const isFirefox = /Firefox/.test(userAgent);
+            
+            return {
+                isMobile,
+                isDesktop,
+                isChrome,
+                isSafari,
+                isFirefox,
+                userAgent
+            };
+        }
+        
+        // Enhanced status function with platform-specific messages
         function showStatus(message, type = 'info') {
-            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            const platform = getPlatformInfo();
+            statusDiv.innerHTML = message;
+            statusDiv.className = type;
+            
+            // Add platform-specific hints for desktop users
+            if (platform.isDesktop && (message.includes('Please authenticate') || message.includes('👆'))) {
+                const hint = platform.isChrome ? 
+                    '<br><small>💡 Chrome + 1Password: Make sure the browser extension is enabled</small>' :
+                    platform.isSafari ?
+                    '<br><small>💡 Safari: Built-in passkey support should work automatically</small>' :
+                    '<br><small>💡 If nothing happens, try scanning this page with your phone</small>';
+                statusDiv.innerHTML += hint;
+            }
         }
         
         // Utility function to display user information
@@ -264,6 +314,13 @@
                     throw new Error('WebAuthn is not supported in this browser');
                 }
                 
+                // Desktop 1Password compatibility: Add user interaction confirmation
+                showStatus('🖱️ Click detected - preparing authentication...');
+                
+                // Desktop optimization: Longer delay for 1Password to be ready
+                console.log('Desktop compatibility: Adding delay for 1Password readiness...');
+                await new Promise(resolve => setTimeout(resolve, 250));
+                
                 showStatus('🔑 Requesting passkey authentication...');
                 loginButton.disabled = true;
                 
@@ -331,9 +388,26 @@
                 // Get credential from authenticator
                 // For desktop 1Password, ensure this happens as close to user interaction as possible
                 console.log('Requesting WebAuthn credential with maximum compatibility settings...');
-                const credential = await navigator.credentials.get({
-                    publicKey: authOptions
-                });
+                
+                let credential;
+                try {
+                    credential = await navigator.credentials.get({
+                        publicKey: authOptions
+                    });
+                } catch (webauthnError) {
+                    console.error('WebAuthn error:', webauthnError);
+                    
+                    // Handle specific desktop compatibility issues
+                    if (webauthnError.name === 'NotSupportedError') {
+                        throw new Error('Desktop authentication issue detected. Try using your phone to scan this page or check if 1Password browser extension is enabled.');
+                    } else if (webauthnError.name === 'NotAllowedError') {
+                        throw new Error('Authentication was cancelled. For desktop 1Password: make sure the extension is enabled and try clicking the login button again.');
+                    } else if (webauthnError.name === 'SecurityError') {
+                        throw new Error('Security error - this might be a cross-domain issue. Try accessing this page directly or check browser security settings.');
+                    } else {
+                        throw new Error(`Authentication failed: ${webauthnError.message}. Try using your mobile device to scan this page.`);
+                    }
+                }
                 
                 if (!credential) {
                     throw new Error('No credential received from authenticator');
@@ -428,6 +502,8 @@
         
         // Initial setup
         document.addEventListener('DOMContentLoaded', async function() {
+            const platform = getPlatformInfo();
+            
             if (!window.PublicKeyCredential) {
                 showStatus('⚠️ WebAuthn is not supported in this browser. Please use a modern browser with passkey support.', 'error');
                 loginButton.disabled = true;
@@ -439,7 +515,22 @@
             const configLoaded = await loadPasskeyConfig();
             
             if (configLoaded) {
-                showStatus('✨ Ready for secure passkey authentication!', 'success');
+                let readyMessage = '✨ Ready for secure passkey authentication!';
+                
+                // Add platform-specific guidance
+                if (platform.isDesktop) {
+                    if (platform.isChrome) {
+                        readyMessage += '<br><small>💻 Desktop Chrome detected - ensure 1Password extension is enabled</small>';
+                    } else if (platform.isSafari) {
+                        readyMessage += '<br><small>💻 Desktop Safari detected - built-in passkey support available</small>';
+                    } else {
+                        readyMessage += '<br><small>💻 Desktop browser detected - if issues occur, try mobile scan</small>';
+                    }
+                } else {
+                    readyMessage += '<br><small>📱 Mobile device detected - passkey authentication should work reliably</small>';
+                }
+                
+                showStatus(readyMessage, 'success');
             }
         });
     </script>
