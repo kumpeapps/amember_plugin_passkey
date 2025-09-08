@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fixed Passkey Login - User Gesture Preserved</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status { 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 15px 30px; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover:not(:disabled) { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Fixed Passkey Authentication</h1>
+        <p>This version preserves user gesture context for proper WebAuthn calls.</p>
+        
+        <div id="status">Ready for authentication...</div>
+        
+        <button id="loginButton">🔑 Authenticate with Passkey</button>
+        
+        <div id="userInfo" style="display:none; margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 5px;">
+            <h3>Authentication Successful!</h3>
+            <div id="userDetails"></div>
+        </div>
+    </div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        const loginButton = document.getElementById('loginButton');
+        const userInfoDiv = document.getElementById('userInfo');
+        const userDetailsDiv = document.getElementById('userDetails');
+        
+        let passkeyConfig = null;
+
+        function showStatus(message, type = 'info') {
+            statusDiv.innerHTML = message;
+            statusDiv.className = 'status ' + (type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : '');
+        }
+
+        function arrayBufferToBase64url(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        // Load configuration from server
+        async function loadPasskeyConfig() {
+            try {
+                const response = await fetch('secure_passkey_auth.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'config' })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Config request failed: ${response.status}`);
+                }
+                
+                const config = await response.json();
+                if (!config.ok) {
+                    throw new Error('Configuration not available');
+                }
+                
+                passkeyConfig = config;
+                console.log('✅ Configuration loaded:', config);
+                return true;
+            } catch (error) {
+                console.error('❌ Failed to load configuration:', error);
+                showStatus('❌ Failed to load configuration. Using defaults.', 'warning');
+                
+                // Use default config
+                passkeyConfig = {
+                    rpId: 'www.kumpeapps.com',
+                    timeout: 60000,
+                    userVerification: 'preferred',
+                    apiKey: ''
+                };
+                return true;
+            }
+        }
+
+        // FIXED: Main authentication function with preserved user gesture
+        async function authenticateWithPasskey() {
+            try {
+                console.log('🚀 Button clicked - starting immediate WebAuthn');
+                loginButton.disabled = true;
+                
+                // Basic WebAuthn support check (synchronous)
+                if (!window.PublicKeyCredential) {
+                    throw new Error('WebAuthn is not supported in this browser');
+                }
+                
+                if (!navigator.credentials || !navigator.credentials.get) {
+                    throw new Error('WebAuthn credentials API not available');
+                }
+                
+                showStatus('🔑 Starting authentication...');
+                
+                // Use cached config or defaults to preserve user gesture
+                const config = passkeyConfig || {
+                    rpId: 'www.kumpeapps.com',
+                    timeout: 60000,
+                    userVerification: 'preferred',
+                    apiKey: ''
+                };
+                
+                // Create authentication options immediately (synchronous)
+                const authOptions = {
+                    challenge: crypto.getRandomValues(new Uint8Array(32)),
+                    timeout: parseInt(config.timeout) || 60000,
+                    rpId: String(config.rpId),
+                    userVerification: String(config.userVerification || 'preferred'),
+                    allowCredentials: []  // Empty for discoverable credentials like aMember
+                };
+                
+                console.log('🎯 WebAuthn options:', {
+                    rpId: authOptions.rpId,
+                    timeout: authOptions.timeout,
+                    userVerification: authOptions.userVerification,
+                    allowCredentialsCount: authOptions.allowCredentials.length
+                });
+                
+                // CRITICAL: Call WebAuthn immediately while user gesture is active
+                console.log('🚀 Calling navigator.credentials.get (user-initiated)...');
+                showStatus('🔐 Please authenticate with your passkey...');
+                
+                const credential = await navigator.credentials.get({
+                    publicKey: authOptions
+                    // No mediation parameter - this is manual/user-initiated
+                });
+                
+                console.log('✅ WebAuthn successful!', credential.id);
+                showStatus('📡 Verifying credential...');
+                
+                // Load full config now if needed (after WebAuthn success)
+                if (!passkeyConfig || !passkeyConfig.apiKey) {
+                    console.log('🔄 Loading full configuration for verification...');
+                    await loadPasskeyConfig();
+                }
+                
+                // Process the credential
+                const credentialData = {
+                    id: credential.id,
+                    rawId: arrayBufferToBase64url(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+                        authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
+                        signature: arrayBufferToBase64url(credential.response.signature),
+                        userHandle: credential.response.userHandle ? 
+                            arrayBufferToBase64url(credential.response.userHandle) : null
+                    },
+                    challenge: arrayBufferToBase64url(authOptions.challenge)
+                };
+                
+                // Send to server for verification
+                const verifyResponse = await fetch('secure_passkey_auth.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': passkeyConfig?.apiKey || ''
+                    },
+                    body: JSON.stringify({
+                        action: 'verify',
+                        credential: credentialData
+                    })
+                });
+                
+                if (!verifyResponse.ok) {
+                    throw new Error(`Verification failed: ${verifyResponse.status} ${verifyResponse.statusText}`);
+                }
+                
+                const result = await verifyResponse.json();
+                
+                if (result.success) {
+                    showStatus(`✅ Authentication successful! Welcome ${result.user?.name || result.user?.login || 'user'}!`, 'success');
+                    
+                    // Show user info
+                    userDetailsDiv.innerHTML = `
+                        <p><strong>User:</strong> ${result.user?.name || result.user?.login || 'Unknown'}</p>
+                        <p><strong>Credential ID:</strong> ${credential.id.substring(0, 20)}...</p>
+                        <p><strong>Authentication Time:</strong> ${new Date().toLocaleString()}</p>
+                    `;
+                    userInfoDiv.style.display = 'block';
+                    
+                    console.log('🎉 Authentication complete:', result);
+                } else {
+                    throw new Error(result.error || 'Authentication verification failed');
+                }
+                
+            } catch (error) {
+                console.error('❌ Authentication error:', error);
+                
+                if (error.name === 'NotAllowedError') {
+                    showStatus('❌ Authentication cancelled or no passkey available. Please try again.', 'error');
+                } else if (error.name === 'SecurityError') {
+                    showStatus('❌ Security error - check HTTPS and domain configuration.', 'error');
+                } else if (error.message?.includes('timeout')) {
+                    showStatus('❌ Authentication timed out. Please try again.', 'error');
+                } else {
+                    showStatus(`❌ Authentication failed: ${error.message}`, 'error');
+                }
+                
+                userInfoDiv.style.display = 'none';
+            } finally {
+                loginButton.disabled = false;
+            }
+        }
+
+        // Event listeners
+        loginButton.addEventListener('click', authenticateWithPasskey);
+
+        // Load configuration on page load
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('🚀 Page loaded - loading configuration...');
+            await loadPasskeyConfig();
+            showStatus('✅ Ready for authentication!');
+        });
+    </script>
+</body>
+</html>

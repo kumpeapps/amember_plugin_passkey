@@ -465,10 +465,6 @@
                     throw new Error(result.error || 'Authentication verification failed');
                 }
                 
-            } else {
-                    throw new Error(result.error || 'Authentication verification failed');
-                }
-                
             } catch (error) {
                 console.error('❌ WebAuthn error:', error);
                 console.error('Error details:', {
