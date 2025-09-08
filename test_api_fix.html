@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Authentication Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; background: #f9f9f9; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; }
+        pre { background: #f0f0f0; padding: 10px; overflow-x: auto; max-height: 400px; white-space: pre-wrap; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔧 API Authentication Endpoint Fix Test</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Direct API Call with Key</h2>
+        <p>This test calls the authentication endpoint directly with an API key to verify the fix.</p>
+        <button onclick="testDirectApiCall()">Test Direct API Call</button>
+        <div id="direct-api-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: No API Key (Should Return Error)</h2>
+        <p>This test verifies proper error handling when no API key is provided.</p>
+        <button onclick="testNoApiKey()">Test No API Key</button>
+        <div id="no-key-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Mock Authentication Request</h2>
+        <p>This test sends a mock authentication request to verify the full flow.</p>
+        <button onclick="testMockAuth()">Test Mock Authentication</button>
+        <div id="mock-auth-results"></div>
+    </div>
+
+    <script>
+        const API_KEY = 'U0ZW8TJru8nCmSDgbPBRTB0sAFyGGqXu'; // Your actual API key
+        
+        async function makeRequest(url, options = {}) {
+            try {
+                console.log('Making request to:', url);
+                console.log('Options:', options);
+                
+                const response = await fetch(url, {
+                    method: options.method || 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(options.useApiKey !== false ? { 'Authorization': 'Bearer ' + API_KEY } : {}),
+                        ...options.headers
+                    },
+                    body: options.body ? JSON.stringify(options.body) : null
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+                
+                const text = await response.text();
+                console.log('Response text:', text);
+                
+                let result = {
+                    status: response.status,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    text: text,
+                    timestamp: new Date().toISOString()
+                };
+                
+                try {
+                    result.json = JSON.parse(text);
+                } catch (e) {
+                    result.parseError = e.message;
+                }
+                
+                return result;
+            } catch (error) {
+                console.error('Request failed:', error);
+                return { 
+                    error: error.message,
+                    timestamp: new Date().toISOString()
+                };
+            }
+        }
+        
+        async function testDirectApiCall() {
+            const resultsDiv = document.getElementById('direct-api-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing direct API call with authentication key...</p>';
+            
+            try {
+                const result = await makeRequest('/api/check-access/by-passkey', {
+                    method: 'POST',
+                    body: {
+                        credential: {
+                            id: 'test-credential-id',
+                            type: 'public-key'
+                        }
+                    }
+                });
+                
+                let html = '<h4>Direct API Call Results:</h4>';
+                html += `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                
+                if (result.json) {
+                    if (result.json.hasOwnProperty('ok')) {
+                        html += '<p class="success">✅ Got proper API response structure</p>';
+                        if (result.json.error && result.json.error.includes('User not found')) {
+                            html += '<p class="info">ℹ️ Expected "User not found" error (no passkeys exist yet)</p>';
+                        }
+                    } else {
+                        html += '<p class="error">❌ Response missing expected API structure</p>';
+                    }
+                } else if (result.parseError) {
+                    html += '<p class="error">❌ Invalid JSON response: ' + result.parseError + '</p>';
+                } else {
+                    html += '<p class="error">❌ No response received</p>';
+                }
+                
+                resultsDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">❌ Test failed: ${error.message}</p>`;
+            }
+        }
+        
+        async function testNoApiKey() {
+            const resultsDiv = document.getElementById('no-key-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing request without API key...</p>';
+            
+            try {
+                const result = await makeRequest('/api/check-access/by-passkey', {
+                    method: 'POST',
+                    useApiKey: false,
+                    body: { test: 'data' }
+                });
+                
+                let html = '<h4>No API Key Test Results:</h4>';
+                html += `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                
+                if (result.json && result.json.error && result.json.error.includes('API key required')) {
+                    html += '<p class="success">✅ Proper error for missing API key</p>';
+                } else if (result.status === 401 || result.status === 403) {
+                    html += '<p class="success">✅ Proper HTTP status for unauthorized request</p>';
+                } else {
+                    html += '<p class="error">❌ Should have returned API key required error</p>';
+                }
+                
+                resultsDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">❌ Test failed: ${error.message}</p>`;
+            }
+        }
+        
+        async function testMockAuth() {
+            const resultsDiv = document.getElementById('mock-auth-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing mock authentication request...</p>';
+            
+            try {
+                const mockCredential = {
+                    id: 'test-credential-12345',
+                    type: 'public-key',
+                    clientDataJSON: 'eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoidGVzdC1jaGFsbGVuZ2UifQ',
+                    authenticatorData: 'dGVzdC1hdXRoZW50aWNhdG9yLWRhdGE',
+                    signature: 'dGVzdC1zaWduYXR1cmU'
+                };
+                
+                const result = await makeRequest('/api/check-access/by-passkey', {
+                    method: 'POST',
+                    body: {
+                        credential: mockCredential
+                    }
+                });
+                
+                let html = '<h4>Mock Authentication Results:</h4>';
+                html += `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                
+                if (result.json) {
+                    if (result.json.ok === false && result.json.error) {
+                        html += '<p class="success">✅ Authentication properly rejected invalid credential</p>';
+                        html += `<p class="info">Error: ${result.json.error}</p>`;
+                    } else if (result.json.ok === true) {
+                        html += '<p class="success">✅ Authentication succeeded (unexpected but good!)</p>';
+                    } else {
+                        html += '<p class="error">❌ Unexpected response structure</p>';
+                    }
+                } else {
+                    html += '<p class="error">❌ No JSON response received</p>';
+                }
+                
+                resultsDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">❌ Test failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Auto-run first test on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(testDirectApiCall, 1000);
+        });
+    </script>
+</body>
+</html>

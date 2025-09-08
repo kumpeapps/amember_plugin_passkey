@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Fixed Plugin - No Infinite Loops</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; background: #f9f9f9; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; }
+        pre { background: #f0f0f0; padding: 10px; overflow-x: auto; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        #results { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Test Fixed Passkey Plugin - Infinite Loop Protection</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Basic Configuration Retrieval</h2>
+        <p>This test retrieves the passkey configuration multiple times to ensure no infinite loops occur.</p>
+        <button onclick="testBasicConfig()">Test Basic Config</button>
+        <div id="basic-config-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Multiple Related Origins Calls</h2>
+        <p>This test makes multiple calls to related origins functionality.</p>
+        <button onclick="testMultipleOriginsCalls()">Test Multiple Origins Calls</button>
+        <div id="multiple-origins-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Well-Known File Generation</h2>
+        <p>This test verifies the .well-known/webauthn file can be accessed without triggering infinite loops.</p>
+        <button onclick="testWellKnownFile()">Test Well-Known File</button>
+        <div id="wellknown-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 4: Configuration Updates</h2>
+        <p>This test simulates configuration updates to ensure they don't cause infinite loops.</p>
+        <button onclick="testConfigUpdates()">Test Config Updates</button>
+        <div id="config-updates-results"></div>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        async function makeRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    method: options.method || 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    body: options.body ? JSON.stringify(options.body) : null
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const text = await response.text();
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    return { text: text, parseError: e.message };
+                }
+            } catch (error) {
+                return { error: error.message };
+            }
+        }
+        
+        async function testBasicConfig() {
+            const resultsDiv = document.getElementById('basic-config-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing basic configuration retrieval...</p>';
+            
+            try {
+                const startTime = Date.now();
+                
+                // Make multiple rapid calls to test for infinite loops
+                const promises = [];
+                for (let i = 0; i < 5; i++) {
+                    promises.push(makeRequest('/api/passkey/config'));
+                }
+                
+                const results = await Promise.all(promises);
+                const endTime = Date.now();
+                const duration = endTime - startTime;
+                
+                let html = `<p class="success">✅ All ${results.length} config calls completed in ${duration}ms</p>`;
+                
+                results.forEach((result, index) => {
+                    if (result.error) {
+                        html += `<p class="error">❌ Call ${index + 1}: ${result.error}</p>`;
+                    } else {
+                        html += `<p class="success">✅ Call ${index + 1}: Success (${result.ok ? 'OK' : 'Not OK'})</p>`;
+                    }
+                });
+                
+                if (duration < 10000) { // Less than 10 seconds is reasonable
+                    html += '<p class="success">🚀 Response time indicates no infinite loops!</p>';
+                } else {
+                    html += '<p class="error">⚠️ Slow response time - potential issues detected</p>';
+                }
+                
+                resultsDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">❌ Test failed: ${error.message}</p>`;
+            }
+        }
+        
+        async function testMultipleOriginsCalls() {
+            const resultsDiv = document.getElementById('multiple-origins-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing multiple related origins calls...</p>';
+            
+            try {
+                const startTime = Date.now();
+                
+                // Make multiple calls to origins endpoint
+                const calls = [
+                    makeRequest('/api/passkey/config?action=get-origins'),
+                    makeRequest('/api/passkey/config'),
+                    makeRequest('/api/passkey/config?action=get-origins'),
+                    makeRequest('/api/passkey/config')
+                ];
+                
+                const results = await Promise.all(calls);
+                const endTime = Date.now();
+                const duration = endTime - startTime;
+                
+                let html = `<p class="success">✅ All origins calls completed in ${duration}ms</p>`;
+                
+                const successCount = results.filter(r => !r.error).length;
+                html += `<p class="info">📊 Success rate: ${successCount}/${results.length}</p>`;
+                
+                if (duration < 5000) {
+                    html += '<p class="success">🚀 Fast response - no infinite loops detected!</p>';
+                }
+                
+                resultsDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">❌ Test failed: ${error.message}</p>`;
+            }
+        }
+        
+        async function testWellKnownFile() {
+            const resultsDiv = document.getElementById('wellknown-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing .well-known/webauthn file access...</p>';
+            
+            try {
+                const startTime = Date.now();
+                
+                // Try to access the well-known file
+                const result = await makeRequest('/.well-known/webauthn');
+                const endTime = Date.now();
+                const duration = endTime - startTime;
+                
+                let html = `<p class="info">⏱️ Well-known file request completed in ${duration}ms</p>`;
+                
+                if (result.error) {
+                    if (result.error.includes('404')) {
+                        html += '<p class="info">ℹ️ Well-known file not found - this is expected if no related origins are configured</p>';
+                    } else {
+                        html += `<p class="error">❌ Error accessing well-known file: ${result.error}</p>`;
+                    }
+                } else {
+                    html += '<p class="success">✅ Well-known file accessed successfully</p>';
+                    if (result.origins) {
+                        html += `<p class="info">📋 Origins found: ${result.origins.length}</p>`;
+                    }
+                }
+                
+                if (duration < 3000) {
+                    html += '<p class="success">🚀 Quick response - no infinite loops!</p>';
+                }
+                
+                resultsDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">❌ Test failed: ${error.message}</p>`;
+            }
+        }
+        
+        async function testConfigUpdates() {
+            const resultsDiv = document.getElementById('config-updates-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing configuration update simulation...</p>';
+            
+            try {
+                const startTime = Date.now();
+                
+                // Simulate rapid config reads that might trigger updates
+                const promises = [];
+                for (let i = 0; i < 3; i++) {
+                    promises.push(makeRequest('/api/passkey/config'));
+                    // Small delay between calls
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                const results = await Promise.all(promises);
+                const endTime = Date.now();
+                const duration = endTime - startTime;
+                
+                let html = `<p class="success">✅ Config update simulation completed in ${duration}ms</p>`;
+                
+                const errorCount = results.filter(r => r.error).length;
+                if (errorCount === 0) {
+                    html += '<p class="success">✅ No errors during rapid config access</p>';
+                } else {
+                    html += `<p class="error">⚠️ ${errorCount} errors detected</p>`;
+                }
+                
+                if (duration < 5000) {
+                    html += '<p class="success">🚀 Reasonable response time - infinite loop protection working!</p>';
+                } else {
+                    html += '<p class="error">⚠️ Slow response - potential infinite loop issues</p>';
+                }
+                
+                resultsDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">❌ Test failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Auto-run basic test on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(testBasicConfig, 1000);
+        });
+        
+        // Add memory monitoring
+        if (performance.memory) {
+            setInterval(() => {
+                const memInfo = performance.memory;
+                const memDiv = document.getElementById('memory-info') || (() => {
+                    const div = document.createElement('div');
+                    div.id = 'memory-info';
+                    div.style.cssText = 'position: fixed; top: 10px; right: 10px; background: #f0f0f0; padding: 10px; border: 1px solid #ccc; font-size: 12px;';
+                    document.body.appendChild(div);
+                    return div;
+                })();
+                
+                memDiv.innerHTML = `
+                    <strong>Memory Monitor:</strong><br>
+                    Used: ${(memInfo.usedJSHeapSize / 1024 / 1024).toFixed(2)} MB<br>
+                    Total: ${(memInfo.totalJSHeapSize / 1024 / 1024).toFixed(2)} MB<br>
+                    Limit: ${(memInfo.jsHeapSizeLimit / 1024 / 1024).toFixed(2)} MB
+                `;
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

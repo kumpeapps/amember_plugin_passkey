@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Authentication Endpoint</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; background: #f9f9f9; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; }
+        pre { background: #f0f0f0; padding: 10px; overflow-x: auto; max-height: 300px; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Authentication Endpoint Testing</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Authentication Endpoint Availability</h2>
+        <p>This test checks if the authentication endpoints are responding correctly.</p>
+        <button onclick="testEndpoints()">Test All Endpoints</button>
+        <div id="endpoint-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: POST Request Structure</h2>
+        <p>This test checks how the endpoint handles different POST data structures.</p>
+        <button onclick="testPostStructures()">Test POST Structures</button>
+        <div id="post-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Error Response Format</h2>
+        <p>This test verifies the error response format when no credentials are provided.</p>
+        <button onclick="testErrorFormat()">Test Error Format</button>
+        <div id="error-results"></div>
+    </div>
+
+    <script>
+        // Get API key from secure_passkey_auth.php or use a test key
+        const API_KEY = 'U0ZW8TJru8nCmSDgbPBRTB0sAFyGGqXu'; // Use your actual API key
+        
+        async function makeRequest(url, options = {}) {
+            try {
+                console.log('Making request to:', url);
+                console.log('Options:', options);
+                
+                const response = await fetch(url, {
+                    method: options.method || 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + API_KEY,
+                        ...options.headers
+                    },
+                    body: options.body ? JSON.stringify(options.body) : null
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+                
+                const text = await response.text();
+                console.log('Response text:', text);
+                
+                let result = {
+                    status: response.status,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    text: text
+                };
+                
+                try {
+                    result.json = JSON.parse(text);
+                } catch (e) {
+                    result.parseError = e.message;
+                }
+                
+                return result;
+            } catch (error) {
+                console.error('Request failed:', error);
+                return { error: error.message };
+            }
+        }
+        
+        async function testEndpoints() {
+            const resultsDiv = document.getElementById('endpoint-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing authentication endpoints...</p>';
+            
+            const endpoints = [
+                '/api/check-access/by-passkey',
+                '/api/check-access-by-passkey', 
+                '/api/passkey-check-access',
+                '/misc/passkey?action=check-access'
+            ];
+            
+            let html = '';
+            
+            for (const endpoint of endpoints) {
+                html += `<h4>Testing: ${endpoint}</h4>`;
+                
+                try {
+                    // Test GET request
+                    const getResult = await makeRequest(endpoint);
+                    html += `<p><strong>GET Request:</strong></p>`;
+                    html += `<pre>${JSON.stringify(getResult, null, 2)}</pre>`;
+                    
+                    // Test POST request with minimal data
+                    const postResult = await makeRequest(endpoint, {
+                        method: 'POST',
+                        body: { test: 'minimal' }
+                    });
+                    html += `<p><strong>POST Request:</strong></p>`;
+                    html += `<pre>${JSON.stringify(postResult, null, 2)}</pre>`;
+                    
+                } catch (error) {
+                    html += `<p class="error">❌ Error testing ${endpoint}: ${error.message}</p>`;
+                }
+                
+                html += '<hr>';
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        async function testPostStructures() {
+            const resultsDiv = document.getElementById('post-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing POST data structures...</p>';
+            
+            const testCases = [
+                {
+                    name: 'Empty POST',
+                    data: {}
+                },
+                {
+                    name: 'Minimal credential structure',
+                    data: {
+                        credential: {
+                            id: 'test-credential-id',
+                            type: 'public-key'
+                        }
+                    }
+                },
+                {
+                    name: 'Full credential structure',
+                    data: {
+                        credential: {
+                            id: 'test-credential-id',
+                            type: 'public-key',
+                            clientDataJSON: 'test-client-data',
+                            authenticatorData: 'test-auth-data',
+                            signature: 'test-signature'
+                        }
+                    }
+                },
+                {
+                    name: 'Invalid JSON test',
+                    data: 'invalid-json-string'
+                }
+            ];
+            
+            let html = '';
+            
+            for (const testCase of testCases) {
+                html += `<h4>${testCase.name}</h4>`;
+                
+                try {
+                    const result = await makeRequest('/api/check-access/by-passkey', {
+                        method: 'POST',
+                        body: testCase.data
+                    });
+                    
+                    html += `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                    
+                    if (result.json && result.json.error) {
+                        html += `<p class="info">✅ Got expected error response</p>`;
+                    } else if (result.parseError) {
+                        html += `<p class="error">❌ Response is not valid JSON</p>`;
+                    }
+                    
+                } catch (error) {
+                    html += `<p class="error">❌ Error: ${error.message}</p>`;
+                }
+                
+                html += '<hr>';
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        async function testErrorFormat() {
+            const resultsDiv = document.getElementById('error-results');
+            resultsDiv.innerHTML = '<p class="info">🔄 Testing error response format...</p>';
+            
+            try {
+                const result = await makeRequest('/api/check-access/by-passkey', {
+                    method: 'POST',
+                    body: { invalid: 'data' }
+                });
+                
+                let html = '<h4>Error Response Analysis</h4>';
+                html += `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                
+                if (result.json) {
+                    const response = result.json;
+                    const expectedFields = ['ok', 'user_id', 'name', 'email', 'access', 'error'];
+                    const hasAllFields = expectedFields.every(field => response.hasOwnProperty(field));
+                    
+                    if (hasAllFields) {
+                        html += '<p class="success">✅ Response has all expected fields</p>';
+                    } else {
+                        html += '<p class="error">❌ Response missing expected fields</p>';
+                        html += `<p>Expected: ${expectedFields.join(', ')}</p>`;
+                        html += `<p>Got: ${Object.keys(response).join(', ')}</p>`;
+                    }
+                    
+                    if (response.ok === false) {
+                        html += '<p class="success">✅ Correctly marked as failed (ok: false)</p>';
+                    } else {
+                        html += '<p class="error">❌ Should be marked as failed</p>';
+                    }
+                    
+                    if (response.error) {
+                        html += `<p class="success">✅ Error message provided: "${response.error}"</p>`;
+                    } else {
+                        html += '<p class="error">❌ No error message provided</p>';
+                    }
+                } else {
+                    html += '<p class="error">❌ Response is not valid JSON</p>';
+                    html += `<p>Parse error: ${result.parseError}</p>`;
+                }
+                
+                resultsDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">❌ Test failed: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

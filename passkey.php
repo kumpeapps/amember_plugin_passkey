@@ -107,11 +107,10 @@ class Am_Plugin_Passkey extends Am_Plugin
             
             error_log('Passkey Plugin: registerApiController called - attempting to register API hooks');
             
-            // Hook into API routing (no need for custom permissions, use existing by-login-pass)
+            // Hook into API routing (try multiple hook patterns)
             $di->hook->add('apiRoute', array($this, 'onApiRoute'));
             error_log('Passkey Plugin: Added apiRoute hook');
             
-            // Try alternative hook names in case apiRoute doesn't work
             $di->hook->add('api', array($this, 'onApiRoute'));
             error_log('Passkey Plugin: Added api hook');
             
@@ -120,6 +119,27 @@ class Am_Plugin_Passkey extends Am_Plugin
             
             $di->hook->add('restApiRequest', array($this, 'onApiRoute'));
             error_log('Passkey Plugin: Added restApiRequest hook');
+            
+            // Try aMember's standard API registration
+            try {
+                // Register as API controller
+                $di->apiControllerRegistry->register('passkey', $this);
+                error_log('Passkey Plugin: Registered with apiControllerRegistry');
+            } catch (Exception $e) {
+                error_log('Passkey Plugin: apiControllerRegistry failed: ' . $e->getMessage());
+            }
+            
+            // Try REST API registration
+            try {
+                $di->rest->register('passkey', $this);
+                error_log('Passkey Plugin: Registered with REST API');
+            } catch (Exception $e) {
+                error_log('Passkey Plugin: REST API registration failed: ' . $e->getMessage());
+            }
+            
+            // Add basic request interceptor
+            $di->hook->add('beforeOutput', array($this, 'onBeforeOutput'));
+            error_log('Passkey Plugin: Added beforeOutput hook for API interception');
             
             error_log('Passkey Plugin: API hooks registered (using by-login-pass permission)');
             
@@ -215,6 +235,97 @@ class Am_Plugin_Passkey extends Am_Plugin
         }
         
         error_log('Passkey Plugin: onApiRoute EXIT - Route handling complete');
+    }
+    
+    /**
+     * Intercept requests before output to handle API endpoints
+     */
+    public function onBeforeOutput($event)
+    {
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        error_log('Passkey Plugin: onBeforeOutput called for URI: ' . $uri);
+        
+        // Check if this is one of our API endpoints
+        if (preg_match('#^/api/(check-access/by-passkey|check-access-by-passkey|passkey-check-access)/?(\?.*)?$#', $uri)) {
+            error_log('Passkey Plugin: onBeforeOutput - Detected authentication API endpoint: ' . $uri);
+            
+            // Check for API key in headers or query params
+            $apiKey = null;
+            $headers = getallheaders();
+            if (isset($headers['Authorization'])) {
+                if (preg_match('/Bearer\s+(.+)/', $headers['Authorization'], $matches)) {
+                    $apiKey = $matches[1];
+                }
+            }
+            if (!$apiKey && isset($_GET['_key'])) {
+                $apiKey = $_GET['_key'];
+            }
+            
+            error_log('Passkey Plugin: onBeforeOutput - API Key provided: ' . ($apiKey ? 'YES' : 'NO'));
+            
+            // If no API key, return authentication required
+            if (!$apiKey) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'ok' => false,
+                    'error' => 'API key required for authentication endpoint',
+                    'user_id' => null,
+                    'name' => null, 
+                    'email' => null,
+                    'access' => false
+                ]);
+                exit;
+            }
+            
+            // Check API permissions
+            if (!$this->checkApiPermission($apiKey, 'by-login-pass')) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'ok' => false,
+                    'error' => 'Insufficient API permissions',
+                    'user_id' => null,
+                    'name' => null,
+                    'email' => null,
+                    'access' => false
+                ]);
+                exit;
+            }
+            
+            // Handle the authentication request
+            try {
+                // Create a mock request object
+                $request = new stdClass();
+                $request->getRawBody = function() {
+                    return file_get_contents('php://input');
+                };
+                $request->getPost = function() {
+                    return $_POST;
+                };
+                $request->getParam = function($name) {
+                    return $_GET[$name] ?? null;
+                };
+                
+                $result = $this->handlePasskeyCheckAccess($request);
+                
+                // Output JSON response and exit
+                header('Content-Type: application/json');
+                echo json_encode($result);
+                exit;
+                
+            } catch (Exception $e) {
+                error_log('Passkey Plugin: Exception in onBeforeOutput: ' . $e->getMessage());
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'ok' => false,
+                    'error' => 'Internal server error: ' . $e->getMessage(),
+                    'user_id' => null,
+                    'name' => null,
+                    'email' => null,
+                    'access' => false
+                ]);
+                exit;
+            }
+        }
     }
     
     /**
