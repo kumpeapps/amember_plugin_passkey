@@ -219,10 +219,19 @@ class Am_Plugin_Passkey extends Am_Plugin
                 error_log('Passkey Plugin: Config endpoint processing complete');
             } elseif (preg_match('#^/\.well-known/webauthn/?$#', $path)) {
                 error_log('Passkey Plugin: Matched .well-known/webauthn endpoint');
-                // Handle WebAuthn well-known file
+                // Handle WebAuthn well-known file with CORS headers
                 $result = $this->handleWellKnownWebauthn($request);
-                $event->setReturn($result);
-                $event->stopPropagation();
+                
+                // Set CORS headers before sending response
+                header('Access-Control-Allow-Origin: *');
+                header('Access-Control-Allow-Methods: GET, OPTIONS');
+                header('Access-Control-Allow-Headers: Content-Type');
+                header('Content-Type: application/json');
+                header('Cache-Control: public, max-age=3600');
+                
+                // Send the response directly with proper headers
+                echo json_encode($result);
+                exit;
             } else {
                 error_log('Passkey Plugin: No matching endpoint for path: ' . $path);
             }

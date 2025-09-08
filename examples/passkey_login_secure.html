@@ -325,6 +325,9 @@
                         }
                     } catch (e) {
                         console.warn('⚠️ Failed to fetch well-known file:', e.message);
+                        
+                        // Show user-friendly message about cross-domain issues
+                        showStatus('⚠️ Cross-domain setup issue detected. You may need to register passkeys specifically for this domain.', 'warning');
                     }
                 }
                 
