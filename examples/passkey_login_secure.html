@@ -509,7 +509,22 @@
                                             document.querySelector('meta[name="1password-extension"]') ||
                                             window.OnePasswordExtension ||
                                             document.documentElement.hasAttribute('data-1password-extension-installed');
+                
+                // Safari-specific 1Password detection
+                const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+                let safariPasskeyMethod = 'platform'; // Default to platform authenticator
+                
+                if (isSafari) {
+                    console.log('🧭 Safari detected - checking passkey preferences...');
+                    
+                    // In Safari, both platform and 1Password can handle passkeys
+                    // We'll let Safari decide which method to use based on user preference
+                    console.log('Safari will present available passkey options (TouchID, 1Password, etc.)');
+                    safariPasskeyMethod = 'auto';
+                }
+                
                 console.log('1Password extension detected:', has1PasswordExtension);
+                console.log('Safari passkey method:', safariPasskeyMethod);
                 
                 // Get credential from authenticator
                 // For desktop 1Password, ensure this happens as close to user interaction as possible
@@ -576,7 +591,7 @@
                         });
                     }
                     
-                    showStatus('🔐 Calling WebAuthn API - 1Password should respond now...');
+                    showStatus('🔐 Calling WebAuthn API - Safari will present available passkey options...');
                     
                     // CRITICAL: Use conditional mediation for 1Password desktop compatibility
                     // This matches the aMember plugin implementation exactly

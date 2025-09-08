@@ -1186,6 +1186,9 @@ class Am_Plugin_Passkey extends Am_Plugin
                 error_log('Passkey Plugin: Updated .well-known/webauthn file successfully');
                 error_log('Passkey Plugin: File size: ' . $writeResult . ' bytes');
                 
+                // Automatically create/update .htaccess with CORS headers for cross-domain WebAuthn support
+                $this->updateWellKnownHtaccess($wellKnownDir);
+                
                 // Update the last update time
                 $lastUpdate = $now;
                 $updateInProgress = false;
@@ -1199,6 +1202,66 @@ class Am_Plugin_Passkey extends Am_Plugin
         } catch (Exception $e) {
             error_log('Passkey Plugin: Error updating .well-known file: ' . $e->getMessage());
             $updateInProgress = false;
+            return false;
+        }
+    }
+
+    /**
+     * Create or update .htaccess file in .well-known directory to add CORS headers for WebAuthn
+     */
+    protected function updateWellKnownHtaccess($wellKnownDir)
+    {
+        try {
+            $htaccessFile = $wellKnownDir . '/.htaccess';
+            error_log('Passkey Plugin: Updating .htaccess file for CORS: ' . $htaccessFile);
+            
+            // Check if .htaccess already exists and read current content
+            $existingContent = '';
+            $webauthnSectionExists = false;
+            
+            if (file_exists($htaccessFile)) {
+                $existingContent = file_get_contents($htaccessFile);
+                // Check if webauthn section already exists
+                if (strpos($existingContent, '<Files "webauthn">') !== false) {
+                    $webauthnSectionExists = true;
+                    error_log('Passkey Plugin: WebAuthn CORS section already exists in .htaccess');
+                    return true; // Already configured
+                }
+            }
+            
+            // Prepare the WebAuthn CORS section
+            $webauthnSection = "\n" . '<Files "webauthn">' . "\n" .
+                'ForceType "application/json"' . "\n" .
+                'Header always set Access-Control-Allow-Origin "*"' . "\n" .
+                'Header always set Access-Control-Allow-Methods "GET, OPTIONS"' . "\n" .
+                'Header always set Access-Control-Allow-Headers "Content-Type, Accept"' . "\n" .
+                'Header always set Cache-Control "public, max-age=3600"' . "\n" .
+                '</Files>' . "\n";
+            
+            // If .htaccess doesn't exist, create it with just the WebAuthn section
+            if (!file_exists($htaccessFile)) {
+                $newContent = trim($webauthnSection);
+                error_log('Passkey Plugin: Creating new .htaccess with WebAuthn CORS headers');
+            } else {
+                // Append WebAuthn section to existing content
+                $newContent = rtrim($existingContent) . $webauthnSection;
+                error_log('Passkey Plugin: Appending WebAuthn CORS headers to existing .htaccess');
+            }
+            
+            // Write the updated .htaccess file
+            $writeResult = file_put_contents($htaccessFile, $newContent);
+            
+            if ($writeResult !== false) {
+                error_log('Passkey Plugin: Successfully updated .htaccess with CORS headers');
+                error_log('Passkey Plugin: .htaccess file size: ' . $writeResult . ' bytes');
+                return true;
+            } else {
+                error_log('Passkey Plugin: Failed to write .htaccess file');
+                return false;
+            }
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Error updating .htaccess file: ' . $e->getMessage());
             return false;
         }
     }
@@ -1743,6 +1806,7 @@ class Am_Plugin_Passkey extends Am_Plugin
             $form->addStatic()->setLabel('Resident Key')->setContent('"Discouraged" prevents external security keys from storing passkeys and improves compatibility');
             $form->addStatic()->setLabel('Attestation')->setContent('"None" provides maximum compatibility with all authenticators');
             $form->addStatic()->setLabel('Authenticator Attachment')->setContent('"Both" provides maximum flexibility for users with different devices');
+            $form->addStatic()->setLabel('Cross-Domain Support')->setContent('Plugin automatically creates .well-known/webauthn file and CORS headers for cross-domain authentication');
             
             // Admin-specific configuration
             $form->addHtml('<h3>Admin Passkey Configuration</h3>');
