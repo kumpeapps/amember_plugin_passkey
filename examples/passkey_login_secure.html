@@ -324,6 +324,23 @@
                 showStatus('🔑 Requesting passkey authentication...');
                 loginButton.disabled = true;
                 
+                // For desktop 1Password compatibility, try to get actual credential IDs first
+                let allowCredentials = [];
+                try {
+                    showStatus('🔍 Loading available credentials for desktop compatibility...');
+                    const credentialsResponse = await fetch(SECURE_AUTH_ENDPOINT + '?action=get-credentials');
+                    if (credentialsResponse.ok) {
+                        const credentialsResult = await credentialsResponse.json();
+                        if (credentialsResult.ok && credentialsResult.credentials) {
+                            allowCredentials = credentialsResult.credentials;
+                            console.log('✅ Loaded', allowCredentials.length, 'credentials for desktop 1Password compatibility');
+                        }
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Could not load credentials for desktop compatibility:', e.message);
+                    // Continue with empty allowCredentials (fallback for compatibility)
+                }
+                
                 // Create authentication options using server configuration
                 const authOptions = {
                     challenge: crypto.getRandomValues(new Uint8Array(32)),
@@ -331,10 +348,9 @@
                     // Use aMember's configured rpId (this should match where credentials were registered)
                     rpId: passkeyConfig.rpId,
                     userVerification: passkeyConfig.userVerification || 'preferred',
-                    // CRITICAL: Set allowCredentials to empty array to allow ANY credential
-                    // for this RP ID. This enables both resident keys (1Password) and 
-                    // non-resident keys (hardware keys) to work
-                    allowCredentials: []
+                    // Include actual credential IDs for desktop 1Password compatibility
+                    // If no credentials found, fallback to empty array for discoverable credentials
+                    allowCredentials: allowCredentials
                 };
                 
                 // Build authenticator selection based on configuration  
@@ -355,6 +371,15 @@
                 console.log('- Challenge length:', authOptions.challenge.byteLength);
                 console.log('- Timeout:', authOptions.timeout);
                 console.log('- User verification:', authOptions.userVerification);
+                console.log('- Allow credentials count:', authOptions.allowCredentials.length);
+                if (authOptions.allowCredentials.length > 0) {
+                    console.log('- Desktop 1Password mode: Using specific credential IDs');
+                    authOptions.allowCredentials.forEach((cred, i) => {
+                        console.log(`  Credential ${i+1}: ${cred.id.substring(0, 20)}...`);
+                    });
+                } else {
+                    console.log('- Discoverable credentials mode: Any passkey for this RP ID');
+                }
                 
                 // Check cross-domain setup if rpId differs from current origin
                 if (authOptions.rpId !== window.location.hostname) {

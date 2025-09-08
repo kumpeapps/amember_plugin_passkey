@@ -217,6 +217,14 @@ class Am_Plugin_Passkey extends Am_Plugin
                 $event->setReturn($result);
                 $event->stopPropagation();
                 error_log('Passkey Plugin: Config endpoint processing complete');
+            } elseif (preg_match('#^/api/passkey/credentials/?$#', $path)) {
+                error_log('Passkey Plugin: Matched passkey credentials endpoint - calling handlePasskeyCredentials');
+                // Handle passkey credentials request for desktop 1Password compatibility
+                $result = $this->handlePasskeyCredentials($request);
+                error_log('Passkey Plugin: handlePasskeyCredentials returned: ' . json_encode($result));
+                $event->setReturn($result);
+                $event->stopPropagation();
+                error_log('Passkey Plugin: Credentials endpoint processing complete');
             } elseif (preg_match('#^/\.well-known/webauthn/?$#', $path)) {
                 error_log('Passkey Plugin: Matched .well-known/webauthn endpoint');
                 // Handle WebAuthn well-known file with CORS headers
@@ -729,6 +737,54 @@ class Am_Plugin_Passkey extends Am_Plugin
         } catch (Exception $e) {
             error_log('Passkey Plugin: Well-known WebAuthn error: ' . $e->getMessage());
             return ['origins' => []]; // Return empty on error
+        }
+    }
+
+    /**
+     * Handle passkey credentials request for desktop 1Password compatibility
+     * Returns available credential IDs that should be included in allowCredentials
+     */
+    protected function handlePasskeyCredentials($request)
+    {
+        error_log('Passkey Plugin: handlePasskeyCredentials called');
+        
+        try {
+            $di = Am_Di::getInstance();
+            $db = $di->db;
+            
+            // Get all stored passkey credentials
+            $sql = "SELECT credential_id, user_id FROM ?_passkey_credentials WHERE 1";
+            $credentials = $db->selectPage($sql, 0, 1000); // Get up to 1000 credentials
+            
+            $allowCredentials = [];
+            
+            if (!empty($credentials)) {
+                foreach ($credentials as $credentialRow) {
+                    if (!empty($credentialRow['credential_id'])) {
+                        $allowCredentials[] = [
+                            'type' => 'public-key',
+                            'id' => $credentialRow['credential_id']
+                        ];
+                    }
+                }
+            }
+            
+            error_log('Passkey Plugin: Found ' . count($allowCredentials) . ' credentials for desktop compatibility');
+            
+            return [
+                'ok' => true,
+                'credentials' => $allowCredentials,
+                'count' => count($allowCredentials),
+                'note' => 'Credentials for desktop 1Password compatibility'
+            ];
+            
+        } catch (Exception $e) {
+            error_log('Passkey Plugin: Credentials endpoint error: ' . $e->getMessage());
+            return [
+                'ok' => false,
+                'error' => 'Failed to retrieve credentials: ' . $e->getMessage(),
+                'credentials' => []
+            ];
         }
     }
 
