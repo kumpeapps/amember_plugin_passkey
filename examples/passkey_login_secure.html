@@ -266,6 +266,52 @@
             return base64ToBase64url(btoa(String.fromCharCode(...new Uint8Array(buffer))));
         }
         
+        // Check if 1Password extension is available and responsive
+        async function checkOnePasswordAvailability() {
+            console.log('🔍 Checking 1Password extension availability...');
+            
+            // Check 1: Basic extension detection via DOM
+            const extensionMarkers = [
+                'data-onepassword-extension-id',
+                'data-1p-extension',
+                '[data-onepassword]',
+                '.onepassword-extension'
+            ];
+            
+            let domMarkers = 0;
+            extensionMarkers.forEach(marker => {
+                if (document.querySelector(marker)) {
+                    domMarkers++;
+                    console.log(`✅ Found 1Password DOM marker: ${marker}`);
+                }
+            });
+            
+            // Check 2: Look for 1Password-injected elements
+            const onePasswordElements = document.querySelectorAll('[id*="onepassword"], [class*="onepassword"], [data*="onepassword"]');
+            console.log(`Found ${onePasswordElements.length} 1Password-related DOM elements`);
+            
+            // Check 3: Test WebAuthn availability 
+            const webauthnSupported = !!(navigator.credentials && navigator.credentials.create && navigator.credentials.get);
+            console.log('WebAuthn API supported:', webauthnSupported);
+            
+            // Check 4: User agent detection (less reliable but useful for logging)
+            const userAgent = navigator.userAgent;
+            const isChrome = userAgent.includes('Chrome');
+            const isSafari = userAgent.includes('Safari') && !userAgent.includes('Chrome');
+            const isFirefox = userAgent.includes('Firefox');
+            
+            console.log(`Browser: ${isChrome ? 'Chrome' : isSafari ? 'Safari' : isFirefox ? 'Firefox' : 'Other'}`);
+            console.log('User Agent:', userAgent);
+            
+            return {
+                webauthnSupported,
+                domMarkers,
+                onePasswordElements: onePasswordElements.length,
+                browser: { isChrome, isSafari, isFirefox },
+                likely1PasswordPresent: domMarkers > 0 || onePasswordElements.length > 0
+            };
+        }
+        
         // Load passkey configuration from server
         async function loadPasskeyConfig() {
             try {
@@ -307,11 +353,26 @@
                     }
                 }
                 
-                showStatus('🔍 Checking WebAuthn support...');
+                showStatus('🔍 Checking WebAuthn support and 1Password extension...');
                 
                 // Check if WebAuthn is supported
                 if (!window.PublicKeyCredential) {
                     throw new Error('WebAuthn is not supported in this browser');
+                }
+                
+                // Check 1Password extension availability
+                const onePasswordInfo = await checkOnePasswordAvailability();
+                console.log('1Password extension check:', onePasswordInfo);
+                
+                if (!onePasswordInfo.webauthnSupported) {
+                    throw new Error('WebAuthn API not available');
+                }
+                
+                if (!onePasswordInfo.likely1PasswordPresent) {
+                    console.warn('⚠️ 1Password extension may not be installed or enabled');
+                    console.warn('Desktop authentication may not work - consider using mobile device');
+                } else {
+                    console.log('✅ 1Password extension appears to be present');
                 }
                 
                 // Desktop 1Password compatibility: Add user interaction confirmation
@@ -533,19 +594,57 @@
                 
                 let credential;
                 try {
-                    // Add a small delay to ensure user gesture is properly registered
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                    // 1Password Desktop Extension Compatibility Enhancements
+                    console.log('🎯 Initiating WebAuthn with 1Password compatibility mode...');
+                    
+                    // Desktop 1Password needs more time to initialize
+                    if (onePasswordInfo.likely1PasswordPresent && !onePasswordInfo.browser.isSafari) {
+                        console.log('Desktop 1Password detected - using extended initialization delay');
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    } else {
+                        // Standard delay for other authenticators
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                    
+                    // Log final WebAuthn request details for desktop debugging
+                    console.log('🚀 WebAuthn Request Summary:');
+                    console.log('- rpId:', authOptions.rpId);
+                    console.log('- allowCredentials provided:', authOptions.allowCredentials.length > 0);
+                    console.log('- timeout:', authOptions.timeout);
+                    console.log('- userVerification:', authOptions.userVerification);
+                    if (authOptions.allowCredentials.length > 0) {
+                        console.log('- credential IDs for desktop 1Password:');
+                        authOptions.allowCredentials.forEach((cred, i) => {
+                            console.log(`  [${i}] ${cred.type}, ${cred.id.length} bytes`);
+                        });
+                    }
+                    
+                    showStatus('🔐 Calling WebAuthn API - 1Password should respond now...');
                     
                     credential = await navigator.credentials.get({
                         publicKey: authOptions
                     });
+                    
+                    console.log('✅ WebAuthn success! Credential received:', credential?.id || 'unknown');
+                    
                 } catch (webauthnError) {
-                    console.error('WebAuthn error:', webauthnError);
+                    console.error('❌ WebAuthn error:', webauthnError);
                     console.error('Error details:', {
                         name: webauthnError.name,
                         message: webauthnError.message,
                         stack: webauthnError.stack
                     });
+                    
+                    // Enhanced 1Password-specific error handling
+                    if (webauthnError.name === 'NotAllowedError') {
+                        if (onePasswordInfo.likely1PasswordPresent) {
+                            throw new Error('1Password desktop extension not responding. Try: 1) Refresh page and try again, 2) Check if 1Password extension is enabled, 3) Use mobile device to scan QR code, or 4) Update 1Password extension.');
+                        } else {
+                            throw new Error('Authentication cancelled or 1Password extension not detected. Please install 1Password browser extension or use a mobile device.');
+                        }
+                    } else if (webauthnError.name === 'AbortError') {
+                        throw new Error('Authentication timed out. This often happens when 1Password doesn\'t have matching credentials for this site. Try registering a new passkey first.');
+                    }
                     
                     // Handle specific desktop compatibility issues
                     if (webauthnError.name === 'TypeError') {
