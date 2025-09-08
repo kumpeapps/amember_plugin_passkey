@@ -106,8 +106,10 @@
                 if (result.json) {
                     if (result.json.hasOwnProperty('ok')) {
                         html += '<p class="success">✅ Got proper API response structure</p>';
-                        if (result.json.error && result.json.error.includes('User not found')) {
+                        if (result.json.error && result.json.message && result.json.message.includes('User not found')) {
                             html += '<p class="info">ℹ️ Expected "User not found" error (no passkeys exist yet)</p>';
+                        } else if (result.json.error && result.json.message) {
+                            html += `<p class="info">ℹ️ API returned error: ${result.json.message}</p>`;
                         }
                     } else {
                         html += '<p class="error">❌ Response missing expected API structure</p>';
@@ -139,8 +141,10 @@
                 let html = '<h4>No API Key Test Results:</h4>';
                 html += `<pre>${JSON.stringify(result, null, 2)}</pre>`;
                 
-                if (result.json && result.json.error && result.json.error.includes('API key required')) {
+                if (result.json && result.json.error && result.json.message && result.json.message.includes('API key required')) {
                     html += '<p class="success">✅ Proper error for missing API key</p>';
+                } else if (result.json && result.json.error && result.json.message && (result.json.message.includes('no [key] specified') || result.json.message.includes('key is too short'))) {
+                    html += '<p class="success">✅ Proper error for missing/invalid API key</p>';
                 } else if (result.status === 401 || result.status === 403) {
                     html += '<p class="success">✅ Proper HTTP status for unauthorized request</p>';
                 } else {
@@ -180,7 +184,7 @@
                 if (result.json) {
                     if (result.json.ok === false && result.json.error) {
                         html += '<p class="success">✅ Authentication properly rejected invalid credential</p>';
-                        html += `<p class="info">Error: ${result.json.error}</p>`;
+                        html += `<p class="info">Error: ${result.json.message || result.json.error}</p>`;
                     } else if (result.json.ok === true) {
                         html += '<p class="success">✅ Authentication succeeded (unexpected but good!)</p>';
                     } else {
