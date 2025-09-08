@@ -260,6 +260,7 @@
                 const authOptions = {
                     challenge: crypto.getRandomValues(new Uint8Array(32)),
                     timeout: passkeyConfig.timeout || 60000,
+                    // Use aMember's configured rpId (this should match where credentials were registered)
                     rpId: passkeyConfig.rpId,
                     userVerification: passkeyConfig.userVerification || 'preferred',
                     // CRITICAL: Set allowCredentials to empty array to allow ANY credential
@@ -269,29 +270,64 @@
                 };
                 
                 // Build authenticator selection based on configuration
+                // For maximum compatibility, only add restrictions if explicitly required
                 const authenticatorSelection = {};
                 
-                // Set resident key preference (but don't require it unless explicitly configured)
-                if (passkeyConfig.residentKey) {
-                    authenticatorSelection.residentKey = passkeyConfig.residentKey;
-                }
+                // Only add authenticator selection if we have STRICT requirements
+                // Avoid setting residentKey: "discouraged" as it might prevent some passkey managers
                 
-                // Only require resident key if explicitly set to true
+                // Only require resident key if explicitly set to true (strict requirement)
                 if (passkeyConfig.requireResidentKey === true) {
                     authenticatorSelection.requireResidentKey = true;
+                    authenticatorSelection.residentKey = 'required';
                 }
                 
-                // Set authenticator attachment preference if specified
-                if (passkeyConfig.authenticatorAttachment) {
+                // Set authenticator attachment preference if specified (platform vs cross-platform)
+                if (passkeyConfig.authenticatorAttachment && passkeyConfig.authenticatorAttachment !== '') {
                     authenticatorSelection.authenticatorAttachment = passkeyConfig.authenticatorAttachment;
                 }
                 
-                // Only add authenticatorSelection if we have preferences
+                // Only add authenticatorSelection if we have actual requirements
+                // This maximizes compatibility with different passkey providers
                 if (Object.keys(authenticatorSelection).length > 0) {
                     authOptions.authenticatorSelection = authenticatorSelection;
+                    console.log('Applied authenticator selection:', authenticatorSelection);
+                } else {
+                    console.log('No authenticator selection restrictions - maximum compatibility mode');
                 }
                 
                 console.log('WebAuthn auth options:', authOptions);
+                
+                // Check cross-domain setup if rpId differs from current origin
+                if (authOptions.rpId !== window.location.hostname) {
+                    console.log(`Cross-domain WebAuthn: ${window.location.hostname} -> ${authOptions.rpId}`);
+                    
+                    // Check if well-known file is accessible
+                    const wellKnownUrl = `https://${authOptions.rpId}/.well-known/webauthn`;
+                    console.log('Checking well-known file:', wellKnownUrl);
+                    
+                    try {
+                        const wellKnownResponse = await fetch(wellKnownUrl);
+                        if (wellKnownResponse.ok) {
+                            const wellKnownData = await wellKnownResponse.json();
+                            console.log('Well-known data:', wellKnownData);
+                            
+                            // Check if current origin is in the allowed origins
+                            const currentOrigin = `https://${window.location.hostname}`;
+                            if (wellKnownData.origins && wellKnownData.origins.includes(currentOrigin)) {
+                                console.log('✅ Current origin is allowed in well-known file');
+                            } else {
+                                console.warn('❌ Current origin NOT found in well-known file:', currentOrigin);
+                                console.log('Allowed origins:', wellKnownData.origins);
+                            }
+                        } else {
+                            console.warn('⚠️ Well-known file not accessible:', wellKnownResponse.status);
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ Failed to fetch well-known file:', e.message);
+                    }
+                }
+                
                 showStatus('👆 Please authenticate with your passkey...');
                 
                 // Get credential from authenticator
