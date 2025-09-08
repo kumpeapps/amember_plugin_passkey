@@ -229,13 +229,27 @@
                     userVerification: passkeyConfig.userVerification || 'preferred'
                 };
                 
-                // Add authenticator attachment if specified in configuration
+                // Add authenticator selection preferences from aMember configuration
+                const authenticatorSelection = {};
+                
                 if (passkeyConfig.authenticatorAttachment) {
-                    authOptions.authenticatorSelection = {
-                        authenticatorAttachment: passkeyConfig.authenticatorAttachment
-                    };
+                    authenticatorSelection.authenticatorAttachment = passkeyConfig.authenticatorAttachment;
                 }
                 
+                if (passkeyConfig.residentKey) {
+                    authenticatorSelection.residentKey = passkeyConfig.residentKey;
+                }
+                
+                if (passkeyConfig.requireResidentKey !== undefined) {
+                    authenticatorSelection.requireResidentKey = passkeyConfig.requireResidentKey;
+                }
+                
+                // Only add authenticatorSelection if we have any preferences
+                if (Object.keys(authenticatorSelection).length > 0) {
+                    authOptions.authenticatorSelection = authenticatorSelection;
+                }
+                
+                console.log('WebAuthn auth options:', authOptions);
                 showStatus('👆 Please authenticate with your passkey...');
                 
                 // Get credential from authenticator
