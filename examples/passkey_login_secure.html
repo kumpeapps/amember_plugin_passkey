@@ -593,6 +593,8 @@
                     
                     showStatus('🔐 Calling WebAuthn API - Safari will present available passkey options...');
                     
+                    console.log('🎯 About to call navigator.credentials.get with conditional mediation...');
+                    
                     // CRITICAL: Use conditional mediation for 1Password desktop compatibility
                     // This matches the aMember plugin implementation exactly
                     credential = await navigator.credentials.get({
