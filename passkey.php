@@ -1206,19 +1206,36 @@ class Am_Plugin_Passkey extends Am_Plugin
                 error_log('Passkey Plugin: Database query result: ' . ($row ? 'found record' : 'no record found'));
                 if ($row) {
                     error_log('Passkey Plugin: Found record data: ' . json_encode($row));
-                }
-                
-                // Also try a broader search to see what records exist
-                $allRows = $db->selectCol('SELECT credential_id FROM ?_passkey_credentials LIMIT 5');
-                error_log('Passkey Plugin: All credential IDs in database: ' . json_encode($allRows));
-                
-                if ($row && !empty($row['user_id'])) {
-                    error_log('Passkey Plugin: Found user_id: ' . $row['user_id']);
-                    // Find user by user_id
-                    return Am_Di::getInstance()->userTable->findFirstByPk($row['user_id']);
-                }
-                
-                error_log('Passkey Plugin: No user found for credential');
+                    
+                    $userId = $row['user_id'];
+                    $userHandle = $row['user_handle'] ?? null;
+                    
+                    error_log('Passkey Plugin: Record user_id: ' . $userId . ', user_handle: ' . $userHandle);
+                    
+                    // PRIMARY: Use user_handle as it's the proper WebAuthn user identifier
+                    if ($userHandle && $userHandle !== '' && $userHandle !== null) {
+                        error_log('Passkey Plugin: Primary lookup by user_handle: ' . $userHandle);
+                        $user = Am_Di::getInstance()->userTable->findFirstByPk($userHandle);
+                        if ($user) {
+                            error_log('Passkey Plugin: SUCCESS - Found user by user_handle: ' . $user->pk() . ' (' . $user->email . ')');
+                            return $user;
+                        } else {
+                            error_log('Passkey Plugin: No user found for user_handle: ' . $userHandle);
+                        }
+                    }
+                    
+                    // FALLBACK: Try user_id if user_handle lookup failed
+                    if (isset($row['user_id']) && $row['user_id'] !== '' && $row['user_id'] !== null) {
+                        error_log('Passkey Plugin: Fallback lookup by user_id: ' . $userId);
+                        $user = Am_Di::getInstance()->userTable->findFirstByPk($userId);
+                        if ($user) {
+                            error_log('Passkey Plugin: Found user by user_id: ' . $user->pk() . ' (' . $user->email . ')');
+                            return $user;
+                        } else {
+                            error_log('Passkey Plugin: No user found for user_id: ' . $userId);
+                        }
+                    }
+                }                error_log('Passkey Plugin: No user found for credential');
                 return null;
                 
             } catch (Exception $e) {
