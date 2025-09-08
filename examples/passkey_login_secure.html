@@ -730,6 +730,88 @@
         // Event listeners
         loginButton.addEventListener('click', authenticateWithPasskey);
         
+        // CRITICAL: Start conditional autofill for 1Password compatibility
+        // This matches the aMember plugin approach for desktop 1Password support
+        async function startConditionalAutofill() {
+            if (!window.PublicKeyCredential || !navigator.credentials) {
+                console.log('WebAuthn not supported - skipping conditional autofill');
+                return;
+            }
+            
+            try {
+                console.log('🔄 Starting conditional autofill for 1Password desktop compatibility...');
+                
+                // Load configuration first
+                if (!passkeyConfig) {
+                    const configLoaded = await loadPasskeyConfig();
+                    if (!configLoaded) {
+                        console.log('Failed to load config for conditional autofill');
+                        return;
+                    }
+                }
+                
+                // Create authentication options (same as manual login but for conditional autofill)
+                const authOptions = {
+                    challenge: crypto.getRandomValues(new Uint8Array(32)),
+                    timeout: parseInt(passkeyConfig.timeout) || 60000,
+                    rpId: String(passkeyConfig.rpId || window.location.hostname),
+                    userVerification: String(passkeyConfig.userVerification || 'preferred'),
+                    allowCredentials: [] // Empty for discoverable credentials (aMember approach)
+                };
+                
+                console.log('🎯 Starting conditional WebAuthn request for 1Password...');
+                
+                // Start conditional mediation - this allows 1Password to intercept
+                const credential = await navigator.credentials.get({
+                    publicKey: authOptions,
+                    mediation: "conditional"
+                });
+                
+                if (credential) {
+                    console.log('✅ Conditional autofill credential received! Processing...');
+                    
+                    // Process the credential (same as manual authentication)
+                    showStatus('📡 Verifying passkey credential...');
+                    
+                    const credentialData = {
+                        id: credential.id,
+                        rawId: arrayBufferToBase64url(credential.rawId),
+                        type: credential.type,
+                        response: {
+                            clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+                            authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
+                            signature: arrayBufferToBase64url(credential.response.signature),
+                            userHandle: credential.response.userHandle ? 
+                                arrayBufferToBase64url(credential.response.userHandle) : null
+                        },
+                        challenge: arrayBufferToBase64url(authOptions.challenge)
+                    };
+                    
+                    // Send to server
+                    const response = await fetch(SECURE_AUTH_ENDPOINT + '?action=authenticate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credential: credentialData })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.ok && result.access) {
+                            showStatus('✅ Conditional autofill authentication successful!', 'success');
+                            displayUserInfo(result);
+                            loginButton.style.display = 'none'; // Hide manual login button
+                        } else {
+                            console.log('Conditional autofill auth failed:', result.error);
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.log('Conditional autofill not available or failed:', error.message);
+                // This is normal - not all browsers/extensions support it
+            }
+        }
+        
         // Initial setup
         document.addEventListener('DOMContentLoaded', async function() {
             const platform = getPlatformInfo();
@@ -761,6 +843,12 @@
                 }
                 
                 showStatus(readyMessage, 'success');
+                
+                // Start conditional autofill after a short delay (matches aMember approach)
+                setTimeout(() => {
+                    console.log('🚀 Initializing conditional autofill for 1Password desktop support...');
+                    startConditionalAutofill();
+                }, 1000); // 1 second delay like aMember plugin
             }
         });
     </script>
