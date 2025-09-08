@@ -578,8 +578,11 @@
                     
                     showStatus('🔐 Calling WebAuthn API - 1Password should respond now...');
                     
+                    // CRITICAL: Use conditional mediation for 1Password desktop compatibility
+                    // This matches the aMember plugin implementation exactly
                     credential = await navigator.credentials.get({
-                        publicKey: authOptions
+                        publicKey: authOptions,
+                        mediation: "conditional"  // Key for 1Password desktop extension support
                     });
                     
                     console.log('✅ WebAuthn success! Credential received:', credential?.id || 'unknown');
