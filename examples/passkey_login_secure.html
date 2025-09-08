@@ -358,14 +358,25 @@
                 // Create authentication options using server configuration
                 const authOptions = {
                     challenge: crypto.getRandomValues(new Uint8Array(32)),
-                    timeout: passkeyConfig.timeout || 60000,
+                    timeout: parseInt(passkeyConfig.timeout) || 60000,
                     // Use aMember's configured rpId (this should match where credentials were registered)
-                    rpId: passkeyConfig.rpId,
-                    userVerification: passkeyConfig.userVerification || 'preferred',
+                    rpId: String(passkeyConfig.rpId || window.location.hostname),
+                    userVerification: String(passkeyConfig.userVerification || 'preferred'),
                     // Include actual credential IDs for desktop 1Password compatibility
                     // If no credentials found, fallback to empty array for discoverable credentials
                     allowCredentials: allowCredentials
                 };
+                
+                // Validate authOptions before use
+                if (!authOptions.challenge || authOptions.challenge.length !== 32) {
+                    throw new Error('Invalid challenge generated');
+                }
+                if (!authOptions.rpId || typeof authOptions.rpId !== 'string') {
+                    throw new Error('Invalid rpId configuration');
+                }
+                if (!Array.isArray(authOptions.allowCredentials)) {
+                    throw new Error('Invalid allowCredentials format');
+                }
                 
                 // Build authenticator selection based on configuration  
                 // IMPORTANT: For desktop 1Password compatibility, we're removing ALL restrictions
@@ -463,6 +474,40 @@
                 // For desktop 1Password, ensure this happens as close to user interaction as possible
                 console.log('Requesting WebAuthn credential with maximum compatibility settings...');
                 
+                // Debug: Log the exact structure being sent to WebAuthn
+                console.log('🔍 Final authOptions structure:', {
+                    challenge: {
+                        type: authOptions.challenge.constructor.name,
+                        length: authOptions.challenge.length,
+                        sample: Array.from(authOptions.challenge.slice(0, 8))
+                    },
+                    timeout: {
+                        type: typeof authOptions.timeout,
+                        value: authOptions.timeout
+                    },
+                    rpId: {
+                        type: typeof authOptions.rpId,
+                        value: authOptions.rpId
+                    },
+                    userVerification: {
+                        type: typeof authOptions.userVerification,
+                        value: authOptions.userVerification
+                    },
+                    allowCredentials: {
+                        type: authOptions.allowCredentials.constructor.name,
+                        length: authOptions.allowCredentials.length,
+                        structure: authOptions.allowCredentials.map((cred, i) => ({
+                            index: i,
+                            type: typeof cred.type,
+                            typeValue: cred.type,
+                            id: {
+                                type: cred.id.constructor.name,
+                                length: cred.id.length
+                            }
+                        }))
+                    }
+                });
+                
                 let credential;
                 try {
                     // Add a small delay to ensure user gesture is properly registered
@@ -480,7 +525,11 @@
                     });
                     
                     // Handle specific desktop compatibility issues
-                    if (webauthnError.name === 'NotSupportedError') {
+                    if (webauthnError.name === 'TypeError') {
+                        console.error('TypeError in WebAuthn - likely invalid data format');
+                        console.error('AuthOptions that caused error:', authOptions);
+                        throw new Error('WebAuthn data format error - check browser console for details. This usually indicates invalid credential ID format or malformed authentication options.');
+                    } else if (webauthnError.name === 'NotSupportedError') {
                         throw new Error('WebAuthn not supported. This might mean: 1) 1Password extension not installed/enabled, 2) Browser doesn\'t support WebAuthn, or 3) No compatible authenticators available.');
                     } else if (webauthnError.name === 'NotAllowedError') {
                         throw new Error('Authentication was cancelled or not allowed. This could mean: 1) User cancelled, 2) No user gesture detected, 3) 1Password extension not responding, or 4) No matching credentials found.');
