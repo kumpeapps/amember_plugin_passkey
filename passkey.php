@@ -1922,6 +1922,43 @@ class Am_Plugin_Passkey extends Am_Plugin
                 echo json_encode(['error' => 'Direct API error: ' . $e->getMessage()]);
                 exit;
             }
+        } elseif (strpos($currentUri, '/api/passkey/credentials') !== false) {
+            error_log('Passkey Plugin: DIRECT API CALL detected - /api/passkey/credentials');
+            
+            // Check API authentication before processing
+            $apiKey = isset($_GET['_key']) ? $_GET['_key'] : (isset($_SERVER['HTTP_X_API_KEY']) ? $_SERVER['HTTP_X_API_KEY'] : '');
+            error_log('Passkey Plugin: API Key provided: ' . ($apiKey ? 'YES' : 'NO'));
+            
+            if (!$this->checkApiPermission($apiKey, 'by-login-pass')) {
+                error_log('Passkey Plugin: API authentication FAILED for key: ' . substr($apiKey, 0, 10) . '...');
+                header('Content-Type: application/json');
+                http_response_code(403);
+                echo json_encode(['error' => 'Access denied', 'code' => 403]);
+                exit;
+            }
+            
+            error_log('Passkey Plugin: API authentication PASSED');
+            
+            // Handle the credentials API call directly
+            try {
+                error_log('Passkey Plugin: Attempting direct credentials API response');
+                
+                $result = $this->handlePasskeyCredentials(null);
+                
+                error_log('Passkey Plugin: Direct credentials API result: ' . json_encode($result));
+                
+                // Send the response
+                header('Content-Type: application/json');
+                echo json_encode($result);
+                exit;
+                
+            } catch (Exception $e) {
+                error_log('Passkey Plugin: Direct credentials API error: ' . $e->getMessage());
+                header('Content-Type: application/json');
+                http_response_code(500);
+                echo json_encode(['error' => 'Direct credentials API error: ' . $e->getMessage()]);
+                exit;
+            }
         }
         
         // DIRECT CHECK-ACCESS API HANDLING - Check if this is the check-access endpoint
