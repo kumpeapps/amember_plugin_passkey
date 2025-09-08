@@ -261,26 +261,40 @@
                     challenge: crypto.getRandomValues(new Uint8Array(32)),
                     timeout: passkeyConfig.timeout || 60000,
                     rpId: passkeyConfig.rpId,
-                    allowCredentials: [], // Allow any registered credential
                     userVerification: passkeyConfig.userVerification || 'preferred'
                 };
                 
-                // Add authenticator selection preferences from aMember configuration
+                // IMPORTANT: For authentication (login), we should NOT set allowCredentials 
+                // to an empty array as this forces resident key requirement.
+                // Instead, we should either:
+                // 1. Not include allowCredentials at all (allows any credential for this rpId)
+                // 2. Or include specific credential IDs if we know them
+                
+                // For a login page, we typically don't restrict to specific credentials
+                // This allows both resident keys (1Password) and non-resident keys (hardware keys)
+                // by not setting allowCredentials
+                
+                // Build authenticator selection based on configuration
                 const authenticatorSelection = {};
                 
+                // Only set resident key preference if explicitly configured
+                if (passkeyConfig.residentKey && passkeyConfig.residentKey !== 'discouraged') {
+                    authenticatorSelection.residentKey = passkeyConfig.residentKey;
+                }
+                
+                // Only require resident key if explicitly set to true
+                if (passkeyConfig.requireResidentKey === true) {
+                    authenticatorSelection.requireResidentKey = true;
+                    // If requiring resident keys, we can set empty allowCredentials
+                    authOptions.allowCredentials = [];
+                }
+                
+                // Set authenticator attachment preference if specified
                 if (passkeyConfig.authenticatorAttachment) {
                     authenticatorSelection.authenticatorAttachment = passkeyConfig.authenticatorAttachment;
                 }
                 
-                if (passkeyConfig.residentKey) {
-                    authenticatorSelection.residentKey = passkeyConfig.residentKey;
-                }
-                
-                if (passkeyConfig.requireResidentKey !== undefined) {
-                    authenticatorSelection.requireResidentKey = passkeyConfig.requireResidentKey;
-                }
-                
-                // Only add authenticatorSelection if we have any preferences
+                // Only add authenticatorSelection if we have preferences
                 if (Object.keys(authenticatorSelection).length > 0) {
                     authOptions.authenticatorSelection = authenticatorSelection;
                 }
