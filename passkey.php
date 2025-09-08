@@ -1215,9 +1215,9 @@ class Am_Plugin_Passkey extends Am_Plugin
                     // PRIMARY: Use user_handle as it's the proper WebAuthn user identifier
                     if ($userHandle && $userHandle !== '' && $userHandle !== null) {
                         error_log('Passkey Plugin: Primary lookup by user_handle: ' . $userHandle);
-                        $user = Am_Di::getInstance()->userTable->findFirstByPk($userHandle);
+                        $user = Am_Di::getInstance()->userTable->findFirstBy(array('user_id' => $userHandle));
                         if ($user) {
-                            error_log('Passkey Plugin: SUCCESS - Found user by user_handle: ' . $user->pk() . ' (' . $user->email . ')');
+                            error_log('Passkey Plugin: SUCCESS - Found user by user_handle: ' . $user->user_id . ' (' . $user->email . ')');
                             return $user;
                         } else {
                             error_log('Passkey Plugin: No user found for user_handle: ' . $userHandle);
@@ -1227,9 +1227,9 @@ class Am_Plugin_Passkey extends Am_Plugin
                     // FALLBACK: Try user_id if user_handle lookup failed
                     if (isset($row['user_id']) && $row['user_id'] !== '' && $row['user_id'] !== null) {
                         error_log('Passkey Plugin: Fallback lookup by user_id: ' . $userId);
-                        $user = Am_Di::getInstance()->userTable->findFirstByPk($userId);
+                        $user = Am_Di::getInstance()->userTable->findFirstBy(array('user_id' => $userId));
                         if ($user) {
-                            error_log('Passkey Plugin: Found user by user_id: ' . $user->pk() . ' (' . $user->email . ')');
+                            error_log('Passkey Plugin: Found user by user_id: ' . $user->user_id . ' (' . $user->email . ')');
                             return $user;
                         } else {
                             error_log('Passkey Plugin: No user found for user_id: ' . $userId);
