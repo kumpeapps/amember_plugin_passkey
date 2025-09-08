@@ -1959,6 +1959,40 @@ class Am_Plugin_Passkey extends Am_Plugin
                 echo json_encode(['error' => 'Direct credentials API error: ' . $e->getMessage()]);
                 exit;
             }
+        } elseif (strpos($currentUri, '/.well-known/webauthn') !== false) {
+            error_log('Passkey Plugin: DIRECT WELL-KNOWN CALL detected - /.well-known/webauthn');
+            
+            // Handle well-known file with CORS headers (no authentication required)
+            try {
+                error_log('Passkey Plugin: Attempting direct well-known response with CORS headers');
+                
+                $result = $this->handleWellKnownWebauthn(null);
+                
+                error_log('Passkey Plugin: Direct well-known result: ' . json_encode($result));
+                
+                // Set CORS headers before sending response
+                header('Access-Control-Allow-Origin: *');
+                header('Access-Control-Allow-Methods: GET, OPTIONS');
+                header('Access-Control-Allow-Headers: Content-Type');
+                header('Content-Type: application/json');
+                header('Cache-Control: public, max-age=3600');
+                
+                // Send the response
+                echo json_encode($result);
+                exit;
+                
+            } catch (Exception $e) {
+                error_log('Passkey Plugin: Direct well-known error: ' . $e->getMessage());
+                
+                // Set CORS headers even for error responses
+                header('Access-Control-Allow-Origin: *');
+                header('Access-Control-Allow-Methods: GET, OPTIONS');
+                header('Access-Control-Allow-Headers: Content-Type');
+                header('Content-Type: application/json');
+                
+                echo json_encode(['origins' => []]);
+                exit;
+            }
         }
         
         // DIRECT CHECK-ACCESS API HANDLING - Check if this is the check-access endpoint

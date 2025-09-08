@@ -390,7 +390,12 @@
                     console.log('Checking well-known file:', wellKnownUrl);
                     
                     try {
-                        const wellKnownResponse = await fetch(wellKnownUrl);
+                        const wellKnownResponse = await fetch(wellKnownUrl, {
+                            mode: 'cors',
+                            headers: {
+                                'Accept': 'application/json'
+                            }
+                        });
                         if (wellKnownResponse.ok) {
                             const wellKnownData = await wellKnownResponse.json();
                             console.log('Well-known data:', wellKnownData);
@@ -407,10 +412,10 @@
                             console.warn('⚠️ Well-known file not accessible:', wellKnownResponse.status);
                         }
                     } catch (e) {
-                        console.warn('⚠️ Failed to fetch well-known file:', e.message);
+                        console.warn('⚠️ Failed to fetch well-known file (CORS issue):', e.message);
                         
                         // Show user-friendly message about cross-domain issues
-                        showStatus('⚠️ Cross-domain setup issue detected. You may need to register passkeys specifically for this domain.', 'warning');
+                        showStatus('⚠️ Cross-domain CORS issue detected. Trying to proceed anyway...', 'warning');
                     }
                 }
                 
