@@ -387,55 +387,15 @@
                 
                 // For desktop 1Password compatibility, try to get actual credential IDs first
                 let allowCredentials = [];
-                try {
-                    showStatus('🔍 Loading available credentials for desktop compatibility...');
-                    const credentialsResponse = await fetch(SECURE_AUTH_ENDPOINT + '?action=get-credentials');
-                    if (credentialsResponse.ok) {
-                        const credentialsResult = await credentialsResponse.json();
-                        console.log('Raw credentials response:', credentialsResult);
-                        
-                        if (credentialsResult.ok && credentialsResult.credentials && Array.isArray(credentialsResult.credentials)) {
-                            console.log('Processing', credentialsResult.credentials.length, 'credentials from server...');
-                            
-                            // Validate and convert credential data to proper WebAuthn format
-                            for (const cred of credentialsResult.credentials) {
-                                if (cred && cred.id && typeof cred.id === 'string') {
-                                    try {
-                                        console.log('Processing credential ID:', cred.id);
-                                        console.log('Original ID length:', cred.id.length);
-                                        
-                                        // Convert base64url credential ID to ArrayBuffer
-                                        const base64 = base64urlToBase64(cred.id);
-                                        console.log('Converted to base64:', base64);
-                                        
-                                        const credentialId = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-                                        console.log('Final Uint8Array length:', credentialId.length);
-                                        
-                                        allowCredentials.push({
-                                            type: 'public-key',
-                                            id: credentialId,
-                                            // Explicitly include all transports for 1Password compatibility
-                                            transports: ['internal', 'usb', 'nfc', 'ble', 'smart-card', 'hybrid']
-                                        });
-                                        console.log('✅ Successfully processed credential', allowCredentials.length);
-                                    } catch (e) {
-                                        console.warn('⚠️ Invalid credential ID format:', cred.id, e.message);
-                                        console.error('Conversion error details:', e);
-                                    }
-                                }
-                            }
-                            console.log('✅ Loaded', allowCredentials.length, 'valid credentials for desktop 1Password compatibility');
-                        } else {
-                            console.warn('Invalid credentials response structure:', credentialsResult);
-                        }
-                    } else {
-                        console.warn('Credentials API request failed:', credentialsResponse.status, credentialsResponse.statusText);
-                    }
-                } catch (e) {
-                    console.warn('⚠️ Could not load credentials for desktop compatibility:', e.message);
-                    console.error('Credentials loading error details:', e);
-                    // Continue with empty allowCredentials (fallback for compatibility)
-                }
+                
+                // CRITICAL FIX: Based on aMember plugin analysis
+                // Regular users should use EMPTY allowCredentials (discoverable credentials mode)
+                // Only admin users need specific credential IDs
+                console.log('🔧 Using aMember-compatible credential discovery mode');
+                console.log('Setting allowCredentials to EMPTY array for discoverable credentials (like aMember does for regular users)');
+                
+                // Skip credential loading for regular users - use discoverable credentials mode
+                // This matches aMember plugin behavior: empty allowCredentials for users, specific IDs only for admins
                 
                 // Create authentication options using server configuration
                 const authOptions = {
@@ -444,25 +404,13 @@
                     // Use aMember's configured rpId (this should match where credentials were registered)
                     rpId: String(passkeyConfig.rpId || window.location.hostname),
                     userVerification: String(passkeyConfig.userVerification || 'preferred'),
-                    // Include actual credential IDs for desktop 1Password compatibility
-                    // If no credentials found, fallback to empty array for discoverable credentials
-                    allowCredentials: allowCredentials
+                    // CRITICAL: Use empty allowCredentials for discoverable credentials (matches aMember behavior)
+                    allowCredentials: allowCredentials  // This should be empty array []
                 };
                 
-                // CRITICAL: Add authenticatorSelection for 1Password desktop compatibility
-                // Based on aMember implementation experience
-                if (onePasswordInfo.likely1PasswordPresent && allowCredentials.length > 0) {
-                    console.log('🎯 Adding authenticatorSelection for 1Password desktop compatibility');
-                    authOptions.authenticatorSelection = {
-                        // Allow both platform and cross-platform authenticators
-                        authenticatorAttachment: undefined, // Don't restrict attachment type
-                        userVerification: 'preferred',
-                        residentKey: 'preferred', // Allow both resident and non-resident keys
-                        requireResidentKey: false // Don't require resident keys
-                    };
-                } else {
-                    console.log('🔄 Omitting authenticatorSelection for maximum compatibility');
-                }
+                // DO NOT add authenticatorSelection for regular users (matches aMember plugin behavior)
+                // aMember plugin only uses specific credentials for admin users, not regular users
+                console.log('🔄 Using discoverable credentials mode (empty allowCredentials) - matches aMember plugin behavior for regular users');
                 
                 // Validate authOptions before use
                 if (!authOptions.challenge || authOptions.challenge.length !== 32) {
