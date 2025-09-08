@@ -347,6 +347,15 @@
                 
                 console.log('WebAuthn auth options:', authOptions);
                 
+                // Debug: Show what we're asking for
+                console.log('🔍 Authentication Request Details:');
+                console.log('- RP ID:', authOptions.rpId);
+                console.log('- Current domain:', window.location.hostname);
+                console.log('- Cross-domain?', authOptions.rpId !== window.location.hostname);
+                console.log('- Challenge length:', authOptions.challenge.byteLength);
+                console.log('- Timeout:', authOptions.timeout);
+                console.log('- User verification:', authOptions.userVerification);
+                
                 // Check cross-domain setup if rpId differs from current origin
                 if (authOptions.rpId !== window.location.hostname) {
                     console.log(`Cross-domain WebAuthn: ${window.location.hostname} -> ${authOptions.rpId}`);
@@ -385,27 +394,58 @@
                 // Small delay to help with desktop 1Password compatibility
                 await new Promise(resolve => setTimeout(resolve, 100));
                 
+                // Debug: Check what authenticators are available
+                console.log('Checking available authenticators...');
+                if (window.PublicKeyCredential && window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+                    try {
+                        const platformAuthAvailable = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+                        console.log('Platform authenticator available:', platformAuthAvailable);
+                    } catch (e) {
+                        console.log('Could not check platform authenticator:', e);
+                    }
+                }
+                
+                // Debug: Log the exact options being sent to WebAuthn
+                console.log('WebAuthn options being sent:', JSON.stringify(authOptions, null, 2));
+                
+                // Check if 1Password extension is present (common detection method)
+                const has1PasswordExtension = window.navigator.userAgent.includes('1Password') || 
+                                            document.querySelector('meta[name="1password-extension"]') ||
+                                            window.OnePasswordExtension ||
+                                            document.documentElement.hasAttribute('data-1password-extension-installed');
+                console.log('1Password extension detected:', has1PasswordExtension);
+                
                 // Get credential from authenticator
                 // For desktop 1Password, ensure this happens as close to user interaction as possible
                 console.log('Requesting WebAuthn credential with maximum compatibility settings...');
                 
                 let credential;
                 try {
+                    // Add a small delay to ensure user gesture is properly registered
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    
                     credential = await navigator.credentials.get({
                         publicKey: authOptions
                     });
                 } catch (webauthnError) {
                     console.error('WebAuthn error:', webauthnError);
+                    console.error('Error details:', {
+                        name: webauthnError.name,
+                        message: webauthnError.message,
+                        stack: webauthnError.stack
+                    });
                     
                     // Handle specific desktop compatibility issues
                     if (webauthnError.name === 'NotSupportedError') {
-                        throw new Error('Desktop authentication issue detected. Try using your phone to scan this page or check if 1Password browser extension is enabled.');
+                        throw new Error('WebAuthn not supported. This might mean: 1) 1Password extension not installed/enabled, 2) Browser doesn\'t support WebAuthn, or 3) No compatible authenticators available.');
                     } else if (webauthnError.name === 'NotAllowedError') {
-                        throw new Error('Authentication was cancelled. For desktop 1Password: make sure the extension is enabled and try clicking the login button again.');
+                        throw new Error('Authentication was cancelled or not allowed. This could mean: 1) User cancelled, 2) No user gesture detected, 3) 1Password extension not responding, or 4) No matching credentials found.');
                     } else if (webauthnError.name === 'SecurityError') {
-                        throw new Error('Security error - this might be a cross-domain issue. Try accessing this page directly or check browser security settings.');
+                        throw new Error('Security error - this might be a cross-domain issue or browser security policy blocking the request.');
+                    } else if (webauthnError.name === 'AbortError') {
+                        throw new Error('Authentication was aborted. This often happens when 1Password doesn\'t have matching credentials for this site.');
                     } else {
-                        throw new Error(`Authentication failed: ${webauthnError.message}. Try using your mobile device to scan this page.`);
+                        throw new Error(`Authentication failed: ${webauthnError.name} - ${webauthnError.message}. Try using your mobile device to scan this page.`);
                     }
                 }
                 

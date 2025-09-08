@@ -152,6 +152,36 @@ function authenticatePasskey($credentialData) {
 }
 
 /**
+ * Get available credentials for better desktop 1Password compatibility
+ */
+function getAvailableCredentials() {
+    $endpoints = [
+        '/api/passkey/credentials',
+        '/api/passkey-credentials', 
+        '/misc/passkey?action=get-credentials'
+    ];
+    
+    $lastError = '';
+    foreach ($endpoints as $endpoint) {
+        $result = makeApiRequest($endpoint, null, 'GET');
+        
+        if (isset($result['ok']) && $result['ok']) {
+            return $result;
+        }
+        
+        $lastError = isset($result['error']) ? $result['error'] : 
+                    (isset($result['message']) ? $result['message'] : 'Unknown error');
+    }
+    
+    // Return empty credentials if endpoint not found (fallback for compatibility)
+    return [
+        'ok' => true,
+        'credentials' => [],
+        'note' => 'Credentials endpoint not available, using discoverable credentials'
+    ];
+}
+
+/**
  * Add a related origin for cross-domain passkey usage
  */
 function addRelatedOrigin($origin) {
@@ -263,6 +293,12 @@ switch ($action) {
         
         $result = removeRelatedOrigin($input['origin']);
         echo json_encode($result);
+        break;
+        
+    case 'get-credentials':
+        // Get available credentials for better desktop compatibility
+        $credentials = getAvailableCredentials();
+        echo json_encode($credentials);
         break;
         
     case 'authenticate':
