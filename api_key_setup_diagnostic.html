@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Key Setup Diagnostic</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        .diagnostic-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; background: #f9f9f9; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .warning { color: orange; font-weight: bold; }
+        .info { color: blue; }
+        pre { background: #f0f0f0; padding: 10px; overflow-x: auto; white-space: pre-wrap; }
+        .code { background: #e8e8e8; padding: 2px 6px; font-family: monospace; }
+        ul { margin: 10px 0; }
+        li { margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔧 API Key Setup Diagnostic</h1>
+    
+    <div class="diagnostic-section">
+        <h2>📊 Current Status</h2>
+        <p class="error">❌ API Error 10002 - [key] is not found or disabled</p>
+        <p>Your API key <code>U0ZW8TJru8nCmSDgbPBRTB0sAFyGGqXu</code> is either:</p>
+        <ul>
+            <li>Not configured in your aMember system</li>
+            <li>Disabled</li>
+            <li>Missing the required <code>by-login-pass</code> permission</li>
+        </ul>
+    </div>
+
+    <div class="diagnostic-section">
+        <h2>🔍 How to Fix This</h2>
+        
+        <h3>Option 1: Create/Configure API Key in aMember Admin</h3>
+        <ol>
+            <li>Log into your <strong>aMember Admin Panel</strong></li>
+            <li>Go to <strong>Setup/Configuration → API Keys</strong></li>
+            <li>Either find the existing key <code>U0ZW8TJru8nCmSDgbPBRTB0sAFyGGqXu</code> or create a new one</li>
+            <li>Make sure it has the <strong>check-access → by-login-pass</strong> permission enabled</li>
+            <li>Ensure it's <strong>not disabled</strong></li>
+        </ol>
+        
+        <h3>Option 2: Database Setup (Manual)</h3>
+        <p>If you need to set this up manually in the database:</p>
+        
+        <h4>Required Database Table: <code>am_api_key</code></h4>
+        <p>Your API key needs an entry like this:</p>
+        <pre>INSERT INTO am_api_key (
+    `key`, 
+    `perms`, 
+    `is_disabled`, 
+    `name`
+) VALUES (
+    'U0ZW8TJru8nCmSDgbPBRTB0sAFyGGqXu',
+    '{"check-access":{"by-login-pass":1}}',
+    0,
+    'Passkey Authentication Test Key'
+);</pre>
+
+        <h4>Alternative Permission Format:</h4>
+        <p>The permissions can also be stored as:</p>
+        <pre>'{"by-login-pass":1}'</pre>
+        <p>Or as comma-separated:</p>
+        <pre>'by-login-pass'</pre>
+    </div>
+
+    <div class="diagnostic-section">
+        <h2>🚀 Next Steps</h2>
+        <ol>
+            <li><strong>Set up your API key</strong> using one of the methods above</li>
+            <li><strong>Test again</strong> by refreshing the API test page</li>
+            <li>You should then see different errors related to the actual passkey authentication instead of API key issues</li>
+        </ol>
+        
+        <p class="info">💡 <strong>Expected Next Error:</strong> Once the API key is properly configured, you'll likely see errors like "Invalid credential format" or "User not found" which indicates the API authentication is working and it's processing your passkey requests.</p>
+    </div>
+
+    <div class="diagnostic-section">
+        <h2>📝 Debug Information</h2>
+        <p>The plugin logs detailed information about API key validation. Check your error logs for entries like:</p>
+        <ul>
+            <li><code>Passkey Plugin: checkApiPermission - Looking up key: U0ZW8TJru8...</code></li>
+            <li><code>Passkey Plugin: checkApiPermission - API key not found in database</code></li>
+            <li><code>Passkey Plugin: checkApiPermission - Key permissions: ...</code></li>
+            <li><code>Passkey Plugin: checkApiPermission - Final result: ...</code></li>
+        </ul>
+        <p>These logs will help you understand exactly what's happening with your API key validation.</p>
+    </div>
+
+    <div class="diagnostic-section">
+        <h2>🔄 Return to Tests</h2>
+        <p><a href="test_api_fix.html">← Back to API Authentication Tests</a></p>
+    </div>
+</body>
+</html>
