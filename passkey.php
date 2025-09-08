@@ -1874,16 +1874,31 @@ class Am_Plugin_Passkey extends Am_Plugin
             try {
                 error_log('Passkey Plugin: Attempting direct check-access API response');
                 
-                // Create a mock request object for the handler
-                $request = new stdClass();
-                $request->getRawBody = function() {
-                    return file_get_contents('php://input');
-                };
-                $request->getPost = function() {
-                    return $_POST;
-                };
-                $request->getParam = function($name) {
-                    return $_GET[$name] ?? null;
+                // Create a proper mock request object for the handler
+                $request = new class {
+                    public function getRawBody() {
+                        return file_get_contents('php://input');
+                    }
+                    
+                    public function getPost($key = null) {
+                        if ($key) {
+                            return $_POST[$key] ?? null;
+                        }
+                        return $_POST;
+                    }
+                    
+                    public function getParam($name, $default = null) {
+                        return $_GET[$name] ?? $_POST[$name] ?? $default;
+                    }
+                    
+                    public function getHeader($name) {
+                        $headers = getallheaders();
+                        return $headers[$name] ?? null;
+                    }
+                    
+                    public function getPathInfo() {
+                        return $_SERVER['REQUEST_URI'] ?? '';
+                    }
                 };
                 
                 $result = $this->handlePasskeyCheckAccess($request);
