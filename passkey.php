@@ -565,9 +565,21 @@ class Am_Plugin_Passkey extends Am_Plugin
             $config = $di->config;
             error_log('Passkey Plugin: Got config object');
             
+            // Get proper WebAuthn configuration from aMember settings
+            $webAuthnConfig = $this->getWebAuthnConfig();
+            error_log('Passkey Plugin: Got WebAuthn config: ' . json_encode($webAuthnConfig));
+            
+            // Update configuration with aMember settings
+            $passkeyConfig['timeout'] = $webAuthnConfig['timeout'];
+            $passkeyConfig['userVerification'] = $webAuthnConfig['user_verification'];
+            $passkeyConfig['attestation'] = $webAuthnConfig['attestation'];
+            $passkeyConfig['residentKey'] = $webAuthnConfig['resident_key'];
+            $passkeyConfig['requireResidentKey'] = $webAuthnConfig['require_resident_key'];
+            $passkeyConfig['authenticatorAttachment'] = $webAuthnConfig['authenticator_attachment'];
+            
             $siteTitle = $config->get('site_title', 'aMember');
             $passkeyConfig['rpName'] = $siteTitle;
-            error_log('Passkey Plugin: Enhanced with site title: ' . $siteTitle);
+            error_log('Passkey Plugin: Enhanced with aMember WebAuthn settings and site title: ' . $siteTitle);
             
             // Add related origins configuration
             $relatedOriginsData = $this->getRelatedOrigins();
