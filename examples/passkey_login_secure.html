@@ -269,32 +269,13 @@
                     allowCredentials: []
                 };
                 
-                // Build authenticator selection based on configuration
-                // For maximum compatibility, only add restrictions if explicitly required
-                const authenticatorSelection = {};
+                // Build authenticator selection based on configuration  
+                // IMPORTANT: For desktop 1Password compatibility, we're removing ALL restrictions
+                // Desktop 1Password is very picky about authenticator selection options
                 
-                // Only add authenticator selection if we have STRICT requirements
-                // Avoid setting residentKey: "discouraged" as it might prevent some passkey managers
-                
-                // Only require resident key if explicitly set to true (strict requirement)
-                if (passkeyConfig.requireResidentKey === true) {
-                    authenticatorSelection.requireResidentKey = true;
-                    authenticatorSelection.residentKey = 'required';
-                }
-                
-                // Set authenticator attachment preference if specified (platform vs cross-platform)
-                if (passkeyConfig.authenticatorAttachment && passkeyConfig.authenticatorAttachment !== '') {
-                    authenticatorSelection.authenticatorAttachment = passkeyConfig.authenticatorAttachment;
-                }
-                
-                // Only add authenticatorSelection if we have actual requirements
-                // This maximizes compatibility with different passkey providers
-                if (Object.keys(authenticatorSelection).length > 0) {
-                    authOptions.authenticatorSelection = authenticatorSelection;
-                    console.log('Applied authenticator selection:', authenticatorSelection);
-                } else {
-                    console.log('No authenticator selection restrictions - maximum compatibility mode');
-                }
+                // Don't add ANY authenticatorSelection for maximum compatibility
+                // This allows desktop 1Password, mobile passkeys, and hardware keys to all work
+                console.log('Maximum compatibility mode - no authenticator restrictions for desktop 1Password compatibility');
                 
                 console.log('WebAuthn auth options:', authOptions);
                 
@@ -331,7 +312,7 @@
                     }
                 }
                 
-                showStatus('👆 Please authenticate with your passkey...');
+                showStatus('👆 Please authenticate with your passkey...<br><small>💡 If 1Password doesn\'t appear on desktop, try using your phone to scan this page!</small>');
                 
                 // Get credential from authenticator
                 const credential = await navigator.credentials.get({
