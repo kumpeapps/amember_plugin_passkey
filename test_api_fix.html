@@ -50,7 +50,7 @@
                     method: options.method || 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        ...(options.useApiKey !== false ? { 'Authorization': 'Bearer ' + API_KEY } : {}),
+                        ...(options.useApiKey !== false ? { 'X-API-Key': API_KEY } : {}),
                         ...options.headers
                     },
                     body: options.body ? JSON.stringify(options.body) : null
@@ -108,8 +108,12 @@
                         html += '<p class="success">✅ Got proper API response structure</p>';
                         if (result.json.error && result.json.message && result.json.message.includes('User not found')) {
                             html += '<p class="info">ℹ️ Expected "User not found" error (no passkeys exist yet)</p>';
+                        } else if (result.json.error && result.json.message && result.json.message.includes('Invalid credential format')) {
+                            html += '<p class="info">ℹ️ Expected "Invalid credential format" error (test credential)</p>';
                         } else if (result.json.error && result.json.message) {
                             html += `<p class="info">ℹ️ API returned error: ${result.json.message}</p>`;
+                        } else if (result.json.ok) {
+                            html += '<p class="success">✅ API call succeeded!</p>';
                         }
                     } else {
                         html += '<p class="error">❌ Response missing expected API structure</p>';
