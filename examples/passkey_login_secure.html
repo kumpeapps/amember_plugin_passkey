@@ -331,9 +331,23 @@
                     const credentialsResponse = await fetch(SECURE_AUTH_ENDPOINT + '?action=get-credentials');
                     if (credentialsResponse.ok) {
                         const credentialsResult = await credentialsResponse.json();
-                        if (credentialsResult.ok && credentialsResult.credentials) {
-                            allowCredentials = credentialsResult.credentials;
-                            console.log('✅ Loaded', allowCredentials.length, 'credentials for desktop 1Password compatibility');
+                        if (credentialsResult.ok && credentialsResult.credentials && Array.isArray(credentialsResult.credentials)) {
+                            // Validate and convert credential data to proper WebAuthn format
+                            for (const cred of credentialsResult.credentials) {
+                                if (cred && cred.id && typeof cred.id === 'string') {
+                                    try {
+                                        // Convert base64url credential ID to ArrayBuffer
+                                        const credentialId = Uint8Array.from(atob(base64urlToBase64(cred.id)), c => c.charCodeAt(0));
+                                        allowCredentials.push({
+                                            type: 'public-key',
+                                            id: credentialId
+                                        });
+                                    } catch (e) {
+                                        console.warn('⚠️ Invalid credential ID format:', cred.id, e.message);
+                                    }
+                                }
+                            }
+                            console.log('✅ Loaded', allowCredentials.length, 'valid credentials for desktop 1Password compatibility');
                         }
                     }
                 } catch (e) {
