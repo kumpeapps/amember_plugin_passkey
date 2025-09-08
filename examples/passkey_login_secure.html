@@ -331,27 +331,46 @@
                     const credentialsResponse = await fetch(SECURE_AUTH_ENDPOINT + '?action=get-credentials');
                     if (credentialsResponse.ok) {
                         const credentialsResult = await credentialsResponse.json();
+                        console.log('Raw credentials response:', credentialsResult);
+                        
                         if (credentialsResult.ok && credentialsResult.credentials && Array.isArray(credentialsResult.credentials)) {
+                            console.log('Processing', credentialsResult.credentials.length, 'credentials from server...');
+                            
                             // Validate and convert credential data to proper WebAuthn format
                             for (const cred of credentialsResult.credentials) {
                                 if (cred && cred.id && typeof cred.id === 'string') {
                                     try {
+                                        console.log('Processing credential ID:', cred.id);
+                                        console.log('Original ID length:', cred.id.length);
+                                        
                                         // Convert base64url credential ID to ArrayBuffer
-                                        const credentialId = Uint8Array.from(atob(base64urlToBase64(cred.id)), c => c.charCodeAt(0));
+                                        const base64 = base64urlToBase64(cred.id);
+                                        console.log('Converted to base64:', base64);
+                                        
+                                        const credentialId = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+                                        console.log('Final Uint8Array length:', credentialId.length);
+                                        
                                         allowCredentials.push({
                                             type: 'public-key',
                                             id: credentialId
                                         });
+                                        console.log('✅ Successfully processed credential', allowCredentials.length);
                                     } catch (e) {
                                         console.warn('⚠️ Invalid credential ID format:', cred.id, e.message);
+                                        console.error('Conversion error details:', e);
                                     }
                                 }
                             }
                             console.log('✅ Loaded', allowCredentials.length, 'valid credentials for desktop 1Password compatibility');
+                        } else {
+                            console.warn('Invalid credentials response structure:', credentialsResult);
                         }
+                    } else {
+                        console.warn('Credentials API request failed:', credentialsResponse.status, credentialsResponse.statusText);
                     }
                 } catch (e) {
                     console.warn('⚠️ Could not load credentials for desktop compatibility:', e.message);
+                    console.error('Credentials loading error details:', e);
                     // Continue with empty allowCredentials (fallback for compatibility)
                 }
                 
@@ -399,14 +418,15 @@
                 console.log('- Allow credentials count:', authOptions.allowCredentials.length);
                 if (authOptions.allowCredentials.length > 0) {
                     console.log('- Desktop 1Password mode: Using specific credential IDs');
-                    authOptions.allowCredentials.forEach((cred, i) => {
-                        const idPreview = cred.id.length > 20 ? 
-                            `[Uint8Array ${cred.id.length} bytes: ${Array.from(cred.id.slice(0, 8)).join(',')}...]` :
-                            `[Uint8Array ${cred.id.length} bytes]`;
-                        console.log(`  Credential ${i+1}: ${idPreview}`);
+                    console.log('- Credential details:');
+                    authOptions.allowCredentials.forEach((cred, index) => {
+                        console.log(`  [${index}] type: ${cred.type}, id: ${cred.id?.constructor?.name || 'unknown'} (length: ${cred.id?.length || 'N/A'})`);
+                        if (cred.id && cred.id.length > 0) {
+                            console.log(`  [${index}] first 4 bytes: [${Array.from(cred.id.slice(0, 4)).join(', ')}]`);
+                        }
                     });
                 } else {
-                    console.log('- Discoverable credentials mode: Any passkey for this RP ID');
+                    console.log('- Discoverable credentials mode: Empty allowCredentials');
                 }
                 
                 // Check cross-domain setup if rpId differs from current origin
