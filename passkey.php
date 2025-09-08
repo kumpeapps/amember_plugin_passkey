@@ -176,10 +176,17 @@ class Am_Plugin_Passkey extends Am_Plugin
             }
             error_log('Passkey Plugin: API permission check PASSED');
             
-            if (preg_match('#^/api/check-access/by-passkey/?$#', $path)) {
-                error_log('Passkey Plugin: Matched check-access endpoint');
+            if (preg_match('#^/api/check-access/by-passkey/?$#', $path) || 
+                preg_match('#^/api/check-access-by-passkey/?$#', $path) ||
+                preg_match('#^/api/passkey-check-access/?$#', $path)) {
+                error_log('Passkey Plugin: Matched check-access endpoint for path: ' . $path);
                 // Handle passkey authentication
                 $result = $this->handlePasskeyCheckAccess($request);
+                
+                // Ensure JSON response
+                header('Content-Type: application/json');
+                
+                error_log('Passkey Plugin: Returning authentication result: ' . json_encode($result));
                 $event->setReturn($result);
                 $event->stopPropagation();
             } elseif (preg_match('#^/api/passkey/config/?$#', $path)) {
@@ -283,15 +290,26 @@ class Am_Plugin_Passkey extends Am_Plugin
      */
     protected function handlePasskeyCheckAccess($request)
     {
+        error_log('Passkey Plugin: handlePasskeyCheckAccess called - starting authentication');
+        
         try {
             // Get request data
-            $data = json_decode($request->getRawBody(), true);
+            $rawBody = $request->getRawBody();
+            error_log('Passkey Plugin: Raw request body: ' . substr($rawBody, 0, 500) . (strlen($rawBody) > 500 ? '...' : ''));
+            
+            $data = json_decode($rawBody, true);
             if (!$data) {
+                error_log('Passkey Plugin: JSON decode failed, trying form data');
                 // Try form data if JSON fails
                 $data = $request->getPost();
+                error_log('Passkey Plugin: Form data: ' . json_encode($data));
+            } else {
+                error_log('Passkey Plugin: JSON decoded successfully: ' . json_encode(array_keys($data)));
             }
             
             $credential = isset($data['credential']) ? $data['credential'] : null;
+            error_log('Passkey Plugin: Credential present: ' . ($credential ? 'YES' : 'NO'));
+            
             $result = [
                 'ok' => false,
                 'user_id' => null,
@@ -302,9 +320,14 @@ class Am_Plugin_Passkey extends Am_Plugin
             ];
             
             if ($credential) {
+                error_log('Passkey Plugin: Looking up user by credential');
                 $user = $this->findUserByPasskeyCredential($credential);
+                
                 if ($user) {
+                    error_log('Passkey Plugin: User found: ' . $user->pk() . ' (' . $user->email . ')');
                     $isValid = $this->verifyPasskeyCredential($user, $credential);
+                    error_log('Passkey Plugin: Credential verification result: ' . ($isValid ? 'VALID' : 'INVALID'));
+                    
                     if ($isValid) {
                         $result['ok'] = true;
                         $result['user_id'] = $user->pk();
@@ -312,17 +335,27 @@ class Am_Plugin_Passkey extends Am_Plugin
                         $result['email'] = $user->email;
                         $result['access'] = true;
                         $result['error'] = null;
+                        error_log('Passkey Plugin: Authentication SUCCESS for user: ' . $user->email);
                     } else {
                         $result['error'] = 'Invalid passkey credential';
+                        error_log('Passkey Plugin: Authentication FAILED - invalid credential');
                     }
                 } else {
                     $result['error'] = 'User not found';
+                    error_log('Passkey Plugin: Authentication FAILED - user not found');
                 }
+            } else {
+                $result['error'] = 'No credential provided';
+                error_log('Passkey Plugin: Authentication FAILED - no credential provided');
             }
             
+            error_log('Passkey Plugin: Final result: ' . json_encode($result));
             return $result;
             
         } catch (Exception $e) {
+            error_log('Passkey Plugin: Exception in handlePasskeyCheckAccess: ' . $e->getMessage());
+            error_log('Passkey Plugin: Exception trace: ' . $e->getTraceAsString());
+            
             return [
                 'ok' => false,
                 'error' => 'Internal error: ' . $e->getMessage(),
@@ -1022,17 +1055,44 @@ class Am_Plugin_Passkey extends Am_Plugin
          */
         protected function findUserByPasskeyCredential($credential)
         {
-            $db = Am_Di::getInstance()->db;
-            // Extract credential_id from the credential (WebAuthn response)
-            $credentialId = isset($credential['id']) ? $credential['id'] : null;
-            if (!$credentialId) return null;
-            // Find passkey record by credential_id
-            $row = $db->selectRow('SELECT * FROM ?_passkey_credentials WHERE credential_id = ?', $credentialId);
-            if ($row && !empty($row['user_id'])) {
-                // Find user by user_id
-                return Am_Di::getInstance()->userTable->findFirstByPk($row['user_id']);
+            error_log('Passkey Plugin: findUserByPasskeyCredential called');
+            
+            try {
+                $db = Am_Di::getInstance()->db;
+                
+                // Extract credential_id from the credential (WebAuthn response)
+                $credentialId = isset($credential['id']) ? $credential['id'] : null;
+                error_log('Passkey Plugin: Looking for credential ID: ' . ($credentialId ?: 'none'));
+                
+                if (!$credentialId) {
+                    error_log('Passkey Plugin: No credential ID provided');
+                    return null;
+                }
+                
+                // Check if table exists first
+                $tableExists = $db->selectCell("SHOW TABLES LIKE '%passkey_credentials'");
+                if (!$tableExists) {
+                    error_log('Passkey Plugin: passkey_credentials table does not exist');
+                    return null;
+                }
+                
+                // Find passkey record by credential_id
+                $row = $db->selectRow('SELECT * FROM ?_passkey_credentials WHERE credential_id = ?', $credentialId);
+                error_log('Passkey Plugin: Database query result: ' . ($row ? 'found record' : 'no record found'));
+                
+                if ($row && !empty($row['user_id'])) {
+                    error_log('Passkey Plugin: Found user_id: ' . $row['user_id']);
+                    // Find user by user_id
+                    return Am_Di::getInstance()->userTable->findFirstByPk($row['user_id']);
+                }
+                
+                error_log('Passkey Plugin: No user found for credential');
+                return null;
+                
+            } catch (Exception $e) {
+                error_log('Passkey Plugin: Exception in findUserByPasskeyCredential: ' . $e->getMessage());
+                return null;
             }
-            return null;
         }
 
         /**
