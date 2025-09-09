@@ -226,15 +226,23 @@
                 const challenge = new Uint8Array(32);
                 crypto.getRandomValues(challenge);
 
+                // Convert credential IDs from base64url strings to ArrayBuffers
+                const allowCredentials = (credentialsData.credentials || []).map(cred => ({
+                    type: cred.type || 'public-key',
+                    id: base64urlToArrayBuffer(cred.id),
+                    transports: cred.transports || ['usb', 'nfc', 'ble', 'internal']
+                }));
+
                 const authOptions = {
                     challenge: challenge,
                     timeout: currentConfig.timeout || 60000,
                     userVerification: currentConfig.userVerification || 'preferred',
-                    allowCredentials: credentialsData.credentials || [],
+                    allowCredentials: allowCredentials,
                     extensions: {}
                 };
 
                 console.log('Auth options created:', authOptions);
+                console.log(`Converted ${allowCredentials.length} credential IDs to ArrayBuffers`);
                 return authOptions;
                 
             } catch (error) {
