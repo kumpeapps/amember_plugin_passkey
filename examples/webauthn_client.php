@@ -1,12 +1,48 @@
 <?php
-// Load config if available
-$config = [];
-if (file_exists('config.php')) {
+// Load config - REQUIRED
+if (!file_exists('config.php')) {
+    $error = 'Configuration file config.php not found. Please copy config.example.php to config.php and configure it.';
+} else {
     $config = include 'config.php';
+    
+    // Validate required config
+    $required = ['amember_base_url', 'api_key', 'rp_id'];
+    $missing = [];
+    foreach ($required as $key) {
+        if (empty($config[$key]) || $config[$key] === 'YOUR_API_KEY_HERE') {
+            $missing[] = $key;
+        }
+    }
+    
+    if (!empty($missing)) {
+        $error = 'Missing required configuration: ' . implode(', ', $missing) . '. Please update config.php with your actual values.';
+    }
 }
 
-$amemberUrl = $config['amember_url'] ?? 'https://kumpeapps.com/members';
-$rpId = $config['rp_id'] ?? 'kumpe3d.com';
+if (isset($error)) {
+    ?>
+    <!DOCTYPE html>
+    <html><head><title>Configuration Error</title></head>
+    <body style="font-family: Arial; margin: 50px; background: #ffe6e6;">
+        <div style="background: white; padding: 30px; border-radius: 8px; border: 2px solid #ff6b6b;">
+            <h1 style="color: #d63031;">⚠️ Configuration Required</h1>
+            <p style="color: #333; font-size: 16px;"><?= htmlspecialchars($error) ?></p>
+            <h3>Required Configuration:</h3>
+            <ul>
+                <li><code>amember_base_url</code> - Your aMember installation URL</li>
+                <li><code>api_key</code> - Your aMember API key</li>
+                <li><code>rp_id</code> - Your domain (e.g., example.com)</li>
+                <li><code>rp_name</code> - Your site name (optional)</li>
+            </ul>
+        </div>
+    </body></html>
+    <?php
+    exit;
+}
+
+$amemberUrl = rtrim($config['amember_base_url'], '/');
+$rpId = $config['rp_id'];
+$rpName = $config['rp_name'] ?? 'WebAuthn Site';
 ?>
 <!DOCTYPE html>
 <html lang="en">

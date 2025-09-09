@@ -4,16 +4,48 @@
  * Uses basic cryptographic functions without complex dependencies
  */
 
-// Load config
-$config = [];
-if (file_exists('config.php')) {
-    $config = include 'config.php';
+// Load config - REQUIRED
+if (!file_exists('config.php')) {
+    header('HTTP/1.1 500 Internal Server Error');
+    echo json_encode([
+        'success' => false,
+        'error' => 'Configuration file config.php not found. Please copy config.example.php to config.php and configure it.',
+        'required_config' => [
+            'amember_base_url' => 'Your aMember installation URL',
+            'api_key' => 'Your aMember API key',
+            'rp_id' => 'Your domain (e.g., example.com)',
+            'rp_name' => 'Your site name'
+        ]
+    ]);
+    exit;
 }
 
-$amemberUrl = $config['amember_url'] ?? 'https://kumpeapps.com/members';
-$apiKey = $config['api_key'] ?? 'YOUR_API_KEY_HERE';
-$rpId = $config['rp_id'] ?? 'kumpe3d.com';
-$rpName = $config['rp_name'] ?? 'Kumpe3D';
+$config = include 'config.php';
+
+// Validate required config
+$required = ['amember_base_url', 'api_key', 'rp_id'];
+$missing = [];
+foreach ($required as $key) {
+    if (empty($config[$key]) || $config[$key] === 'YOUR_API_KEY_HERE') {
+        $missing[] = $key;
+    }
+}
+
+if (!empty($missing)) {
+    header('HTTP/1.1 500 Internal Server Error');
+    echo json_encode([
+        'success' => false,
+        'error' => 'Missing required configuration: ' . implode(', ', $missing),
+        'missing_config' => $missing,
+        'note' => 'Please update config.php with your actual values'
+    ]);
+    exit;
+}
+
+$amemberUrl = rtrim($config['amember_base_url'], '/');
+$apiKey = $config['api_key'];
+$rpId = $config['rp_id'];
+$rpName = $config['rp_name'] ?? 'WebAuthn Site';
 
 // Set CORS headers
 header('Access-Control-Allow-Origin: *');
@@ -63,8 +95,10 @@ function callAmemberAPI($endpoint, $params = []) {
     return json_decode($response, true);
 }
 
-// Get stored credentials from aMember
+// Get stored credentials from aMember database
 function getStoredCredentials() {
+    global $amemberUrl, $apiKey;
+    
     // First try to get from aMember API
     $result = callAmemberAPI('/misc/passkey', ['action' => 'get-credentials']);
     
@@ -72,8 +106,58 @@ function getStoredCredentials() {
         return $result['credentials'];
     }
     
+    // Try to read directly from database if config file exists
+    if (file_exists('../config.php')) {
+        try {
+            $amemberConfig = include '../config.php';
+            $dbConfig = $amemberConfig['db'] ?? null;
+            
+            if ($dbConfig) {
+                $pdo = new PDO(
+                    "mysql:host={$dbConfig['host']};dbname={$dbConfig['db']};charset=utf8mb4",
+                    $dbConfig['user'],
+                    $dbConfig['pass'],
+                    [
+                        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+                    ]
+                );
+                
+                $tableName = ($dbConfig['prefix'] ?? 'am_') . 'passkey_credentials';
+                $stmt = $pdo->prepare("SELECT credential_id, public_key, user_id FROM {$tableName} WHERE 1");
+                $stmt->execute();
+                
+                $credentials = [];
+                while ($row = $stmt->fetch()) {
+                    $credentials[] = [
+                        'id' => $row['credential_id'],
+                        'type' => 'public-key',
+                        'transports' => ['internal', 'hybrid', 'usb'],
+                        'user_id' => $row['user_id']
+                    ];
+                }
+                
+                return $credentials;
+            }
+        } catch (Exception $e) {
+            error_log("Database connection failed: " . $e->getMessage());
+        }
+    }
+    
     // Fallback to session storage for testing
-    return $_SESSION['stored_credentials'] ?? [];
+    if (!isset($_SESSION['test_credentials'])) {
+        // Add some test credentials for development
+        $_SESSION['test_credentials'] = [
+            [
+                'id' => 'test_credential_1',
+                'type' => 'public-key',
+                'transports' => ['internal', 'hybrid', 'usb'],
+                'user_id' => 'test_user'
+            ]
+        ];
+    }
+    
+    return $_SESSION['test_credentials'] ?? [];
 }
 
 // Get action
@@ -118,7 +202,11 @@ switch ($action) {
                 'debug' => [
                     'credentials_found' => count($allowCredentials),
                     'rp_id' => $rpId,
-                    'challenge_length' => strlen($challenge)
+                    'challenge_length' => strlen($challenge),
+                    'stored_credentials' => $storedCredentials,
+                    'amember_url' => $amemberUrl,
+                    'config_exists' => file_exists('config.php'),
+                    'main_config_exists' => file_exists('../config.php')
                 ]
             ]);
             
