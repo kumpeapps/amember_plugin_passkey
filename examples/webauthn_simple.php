@@ -170,20 +170,9 @@ function getStoredCredentials() {
         }
     }
     
-    // Fallback to session storage for testing
-    if (!isset($_SESSION['test_credentials'])) {
-        // Add some test credentials for development
-        $_SESSION['test_credentials'] = [
-            [
-                'id' => 'test_credential_1',
-                'type' => 'public-key',
-                'transports' => ['internal', 'hybrid', 'usb'],
-                'user_id' => 'test_user'
-            ]
-        ];
-    }
-    
-    return $_SESSION['test_credentials'] ?? [];
+    // Fallback - return empty array if no credentials found
+    // This will trigger discoverable/platform credential authentication
+    return [];
 }
 
 // Get action
@@ -204,8 +193,9 @@ switch ($action) {
             $storedCredentials = getStoredCredentials();
             $allowCredentials = [];
             
+            // Only add credentials if we have real ones (not test credentials)
             foreach ($storedCredentials as $cred) {
-                if (isset($cred['id']) && isset($cred['type'])) {
+                if (isset($cred['id']) && isset($cred['type']) && $cred['user_id'] !== 'test_user') {
                     $allowCredentials[] = [
                         'type' => $cred['type'],
                         'id' => $cred['id'], // Assuming already base64url encoded
@@ -218,9 +208,13 @@ switch ($action) {
                 'challenge' => $challengeB64,
                 'timeout' => 60000,
                 'rpId' => $rpId,
-                'allowCredentials' => $allowCredentials,
                 'userVerification' => 'preferred'
             ];
+            
+            // Only add allowCredentials if we have real credentials
+            if (!empty($allowCredentials)) {
+                $options['allowCredentials'] = $allowCredentials;
+            }
             
             echo json_encode([
                 'success' => true,

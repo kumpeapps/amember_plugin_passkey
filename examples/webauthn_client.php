@@ -249,11 +249,15 @@ $rpName = $amemberConfig['rp_name'];
                 const options = challengeData.options;
                 options.challenge = base64urlToArrayBuffer(options.challenge);
                 
-                if (options.allowCredentials) {
+                // Only convert allowCredentials if they exist
+                if (options.allowCredentials && options.allowCredentials.length > 0) {
                     options.allowCredentials = options.allowCredentials.map(cred => ({
                         ...cred,
                         id: base64urlToArrayBuffer(cred.id)
                     }));
+                } else {
+                    // Remove allowCredentials if empty - this enables platform/discoverable credentials
+                    delete options.allowCredentials;
                 }
 
                 console.log('Converted options:', options);
