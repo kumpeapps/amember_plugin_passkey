@@ -274,7 +274,7 @@
                 // Verify with server
                 showStatus('Verifying authentication...', 'info');
                 
-                const verifyResponse = await fetch('https://www.kumpeapps.com/secure/secure_passkey_auth.php?action=amember-verify', {
+                const verifyResponse = await fetch('https://www.kumpeapps.com/api/passkey/?action=verify', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
