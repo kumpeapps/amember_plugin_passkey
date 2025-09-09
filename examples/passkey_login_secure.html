@@ -127,6 +127,41 @@
             </ul>
         </div>
         
+        <!-- Traditional Login Form to trigger 1Password extension -->
+        <form id="loginForm" name="loginForm" action="#" method="post" style="margin-bottom: 30px;">
+            <div style="margin-bottom: 15px;">
+                <label for="amember_login" style="display: block; margin-bottom: 5px; font-weight: bold; color: #495057;">Username/Email</label>
+                <input type="email" 
+                       id="amember_login" 
+                       name="amember_login" 
+                       autocomplete="username email"
+                       placeholder="Enter your email"
+                       style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; box-sizing: border-box;"
+                       data-1p-ignore="false"
+                       required>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label for="amember_pass" style="display: block; margin-bottom: 5px; font-weight: bold; color: #495057;">Password</label>
+                <input type="password" 
+                       id="amember_pass" 
+                       name="amember_pass" 
+                       autocomplete="current-password"
+                       placeholder="Enter your password"
+                       style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; box-sizing: border-box;"
+                       data-1p-ignore="false"
+                       required>
+            </div>
+            
+            <button type="submit" style="width: 100%; padding: 12px; background-color: #007cba; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-bottom: 15px;">
+                Login
+            </button>
+        </form>
+        
+        <div style="text-align: center; margin: 20px 0; color: #666; font-weight: bold;">
+            - OR -
+        </div>
+
         <div id="status"></div>
         
         <button id="passkeyLogin" class="passkey-button">
@@ -985,6 +1020,19 @@
             }
         }
         
+        // Handle traditional login form submission
+        function handleTraditionalLogin(event) {
+            event.preventDefault();
+            console.log('📝 Traditional login form submitted');
+            showStatus('ℹ️ Traditional login not implemented in this demo. Use passkey login below.', 'info');
+            
+            // In a real implementation, you would submit to your authentication endpoint
+            // For this demo, we'll just show the passkey option
+            setTimeout(() => {
+                showStatus('✨ Ready for secure passkey authentication!', 'success');
+            }, 2000);
+        }
+        
         // Initial setup
         document.addEventListener('DOMContentLoaded', async function() {
             const platform = getPlatformInfo();
@@ -993,6 +1041,12 @@
                 showStatus('⚠️ WebAuthn is not supported in this browser. Please use a modern browser with passkey support.', 'error');
                 loginButton.disabled = true;
                 return;
+            }
+            
+            // Set up form submission handler
+            const loginForm = document.getElementById('loginForm');
+            if (loginForm) {
+                loginForm.addEventListener('submit', handleTraditionalLogin);
             }
             
             // Load configuration automatically from aMember
