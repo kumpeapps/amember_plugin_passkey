@@ -316,11 +316,24 @@
 
                 showStatus('🔑 Please authenticate with your passkey...', 'info');
 
-                // Perform WebAuthn authentication with conditional mediation for 1Password support
-                const credential = await navigator.credentials.get({
+                // Add timeout wrapper to debug hanging WebAuthn calls
+                const webauthnPromise = navigator.credentials.get({
                     publicKey: authOptions,
                     mediation: 'conditional' // This allows 1Password to handle the request
                 });
+
+                // Create a timeout promise
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => {
+                        reject(new Error('WebAuthn call timed out after 30 seconds. This usually means: 1) 1Password extension not responding, 2) No matching credentials for this domain, or 3) User cancelled the authentication.'));
+                    }, 30000);
+                });
+
+                console.log('🔄 Calling navigator.credentials.get() with conditional mediation...');
+                console.log('🔍 Waiting for 1Password or browser authenticator response...');
+
+                // Race between WebAuthn and timeout
+                const credential = await Promise.race([webauthnPromise, timeoutPromise]);
 
                 if (!credential) {
                     throw new Error('No credential received from authenticator');
@@ -371,6 +384,69 @@
 
             } catch (error) {
                 console.error('❌ Passkey authentication error:', error);
+                
+                // If conditional mediation failed, try regular mediation as fallback
+                if (error.message.includes('timed out') && !window.webauthnFallbackAttempted) {
+                    console.log('🔄 Conditional mediation timed out, trying regular mediation as fallback...');
+                    window.webauthnFallbackAttempted = true;
+                    
+                    try {
+                        showStatus('🔄 Trying alternative authentication method...', 'info');
+                        
+                        const fallbackCredential = await navigator.credentials.get({
+                            publicKey: authOptions,
+                            mediation: 'optional' // Standard mediation
+                        });
+                        
+                        if (fallbackCredential) {
+                            console.log('✅ Fallback authentication successful!');
+                            // Continue with the normal flow using fallbackCredential
+                            const credentialData = {
+                                id: fallbackCredential.id,
+                                rawId: arrayBufferToBase64url(fallbackCredential.rawId),
+                                type: fallbackCredential.type,
+                                response: {
+                                    clientDataJSON: arrayBufferToBase64url(fallbackCredential.response.clientDataJSON),
+                                    authenticatorData: arrayBufferToBase64url(fallbackCredential.response.authenticatorData),
+                                    signature: arrayBufferToBase64url(fallbackCredential.response.signature),
+                                    userHandle: fallbackCredential.response.userHandle ? 
+                                        arrayBufferToBase64url(fallbackCredential.response.userHandle) : null
+                                },
+                                challenge: arrayBufferToBase64url(authOptions.challenge)
+                            };
+
+                            // Send to server
+                            showStatus('📡 Verifying credential with server...', 'info');
+                            const response = await fetch(SECURE_AUTH_ENDPOINT + '?action=amember-verify', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    credential: credentialData
+                                })
+                            });
+
+                            if (!response.ok) {
+                                throw new Error(`Server error: ${response.status} ${response.statusText}`);
+                            }
+
+                            const result = await response.json();
+                            console.log('📋 Fallback authentication result:', result);
+
+                            if (result.ok || result.access) {
+                                showStatus('✅ Authentication successful! (using fallback method)', 'success');
+                                displayUserInfo(result);
+                                return; // Success, exit function
+                            } else {
+                                throw new Error(result.error || 'Fallback authentication failed');
+                            }
+                        }
+                    } catch (fallbackError) {
+                        console.error('❌ Fallback authentication also failed:', fallbackError);
+                        error = fallbackError; // Use fallback error for display
+                    }
+                }
                 
                 // Enhanced error handling for 1Password compatibility
                 if (error.name === 'NotAllowedError') {
