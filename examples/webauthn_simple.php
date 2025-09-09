@@ -121,16 +121,32 @@ function callAmemberAPI($endpoint, $params = []) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'WebAuthn-Simple/1.0 PHP/' . PHP_VERSION);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
     curl_close($ch);
     
-    if ($httpCode !== 200) {
+    if ($curlError) {
+        error_log("WebAuthn Simple: cURL error: $curlError");
         return false;
     }
     
-    return json_decode($response, true);
+    if ($httpCode !== 200) {
+        error_log("WebAuthn Simple: HTTP error $httpCode for $url");
+        error_log("WebAuthn Simple: Response: $response");
+        return false;
+    }
+    
+    $decoded = json_decode($response, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        error_log("WebAuthn Simple: JSON decode error: " . json_last_error_msg());
+        error_log("WebAuthn Simple: Raw response: $response");
+        return false;
+    }
+    
+    return $decoded;
 }
 
 // Get stored credentials from aMember database
@@ -256,7 +272,9 @@ switch ($action) {
                     'config_source' => 'aMember API or URL fallback',
                     'current_host' => $_SERVER['HTTP_HOST'] ?? 'unknown',
                     'api_call_attempted' => true,
-                    'database_search_attempted' => true
+                    'database_search_attempted' => true,
+                    'wellknown_file_check' => 'https://www.kumpeapps.com/.well-known/webauthn should list ' . ($_SERVER['HTTP_HOST'] ?? 'current_domain'),
+                    'cross_domain_setup' => 'RP ID: ' . $rpId . ' vs Origin: ' . ($_SERVER['HTTP_HOST'] ?? 'unknown')
                 ]
             ]);
             

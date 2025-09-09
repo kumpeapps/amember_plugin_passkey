@@ -275,6 +275,33 @@ $rpName = $amemberConfig['rp_name'];
                 }
 
                 console.log('Converted options:', options);
+                console.log('Current origin:', window.location.origin);
+                console.log('RP ID:', options.rpId);
+                console.log('Cross-domain setup: Origin', window.location.origin, 'vs RP ID', options.rpId);
+                
+                // Check HTTPS requirement
+                if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
+                    console.warn('WARNING: WebAuthn requires HTTPS for production domains');
+                    showStatus('WebAuthn requires HTTPS for this domain', 'error');
+                    return;
+                }
+                
+                // Check if .well-known/webauthn is accessible
+                try {
+                    const wellKnownResponse = await fetch(`https://www.kumpeapps.com/.well-known/webauthn`);
+                    const wellKnownData = await wellKnownResponse.json();
+                    console.log('Well-known WebAuthn data:', wellKnownData);
+                    console.log('Current origin in well-known?', wellKnownData.origins?.includes(window.location.origin));
+                    
+                    if (!wellKnownData.origins?.includes(window.location.origin)) {
+                        console.warn('POTENTIAL ISSUE: Current origin not found in .well-known/webauthn origins list');
+                        console.warn('Current origin:', window.location.origin);
+                        console.warn('Allowed origins:', wellKnownData.origins);
+                    }
+                } catch (e) {
+                    console.warn('Could not fetch .well-known/webauthn:', e);
+                }
+                
                 showStatus('Please authenticate with your passkey...', 'info');
 
                 // Perform WebAuthn authentication
@@ -330,7 +357,37 @@ $rpName = $amemberConfig['rp_name'];
 
             } catch (error) {
                 console.error('Authentication error:', error);
-                showStatus(`Authentication failed: ${error.message}`, 'error');
+                console.error('Error name:', error.name);
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+                
+                let errorMessage = `Authentication failed: ${error.message}`;
+                
+                // Add specific error handling for common WebAuthn errors
+                if (error.name === 'SecurityError') {
+                    if (error.message.includes('RPID')) {
+                        errorMessage += '\n\nThis is a cross-domain WebAuthn issue. Details:';
+                        errorMessage += `\n- Current domain: ${window.location.origin}`;
+                        errorMessage += `\n- RP ID: ${options?.rpId || 'unknown'}`;
+                        errorMessage += `\n- Expected: RP ID should be in .well-known/webauthn origins`;
+                        
+                        // Check if we can access the .well-known file
+                        if (options?.rpId) {
+                            fetch(`https://${options.rpId}/.well-known/webauthn`)
+                                .then(response => response.json())
+                                .then(data => {
+                                    console.log('WebAuthn well-known file:', data);
+                                    const currentOrigin = window.location.origin;
+                                    const isAuthorized = data.origins && data.origins.includes(currentOrigin);
+                                    console.log(`Current origin ${currentOrigin} is ${isAuthorized ? 'authorized' : 'NOT authorized'}`);
+                                    console.log('All authorized origins:', data.origins);
+                                })
+                                .catch(e => console.log('Could not fetch .well-known/webauthn:', e));
+                        }
+                    }
+                }
+                
+                showStatus(errorMessage, 'error');
                 userInfoDiv.style.display = 'none';
             } finally {
                 authButton.disabled = false;
@@ -346,6 +403,20 @@ $rpName = $amemberConfig['rp_name'];
                 authButton.disabled = true;
                 return;
             }
+
+            // Check for conditional mediation support
+            if (window.PublicKeyCredential.isConditionalMediationAvailable) {
+                window.PublicKeyCredential.isConditionalMediationAvailable().then(available => {
+                    console.log('Conditional mediation available:', available);
+                });
+            }
+
+            // Log current domain info
+            console.log('Current page info:');
+            console.log('Origin:', window.location.origin);
+            console.log('Protocol:', window.location.protocol);
+            console.log('Hostname:', window.location.hostname);
+            console.log('Port:', window.location.port);
 
             authButton.addEventListener('click', authenticateWithPasskey);
             showStatus('Ready for WebAuthn authentication!', 'success');
