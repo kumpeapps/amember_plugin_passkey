@@ -67,10 +67,10 @@ function getAmemberConfig() {
     if (strpos($currentHost, 'localhost') !== false) {
         $rpId = 'localhost';
         $rpName .= ' (Local Testing)';
-    } elseif (strpos($currentHost, 'kumpe3d.com') !== false) {
-        // If accessing from kumpe3d.com, use that as RP ID
-        $rpId = 'kumpe3d.com';
-        $rpName .= ' (kumpe3d.com)';
+    } elseif (strpos($currentHost, 'kumpeapps.com') !== false) {
+        // If accessing from kumpeapps.com, use that as RP ID
+        $rpId = 'kumpeapps.com';
+        $rpName .= ' (kumpeapps.com)';
     }
     
     return [
