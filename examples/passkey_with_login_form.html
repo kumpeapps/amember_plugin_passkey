@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passkey Authentication with Login Form</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background-color: #007cba;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        .btn:hover {
+            background-color: #005a8a;
+        }
+        .btn-passkey {
+            background-color: #28a745;
+        }
+        .btn-passkey:hover {
+            background-color: #1e7e34;
+        }
+        .divider {
+            text-align: center;
+            margin: 20px 0;
+            color: #666;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .debug {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Login to your Account</h1>
+        
+        <!-- Traditional Login Form - This should trigger 1Password extension -->
+        <form id="loginForm" action="#" method="post">
+            <div class="form-group">
+                <label for="username">Username/Email</label>
+                <input type="email" id="username" name="username" autocomplete="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+            
+            <button type="submit" class="btn">Login</button>
+        </form>
+        
+        <div class="divider">- OR -</div>
+        
+        <!-- Passkey Login -->
+        <button id="passkeyLogin" class="btn btn-passkey">🔑 Login with Passkey</button>
+        
+        <div id="status" class="status"></div>
+        <div id="debug" class="debug" style="display:none;"></div>
+    </div>
+
+    <script>
+        // Debug logging
+        function log(message, type = 'info') {
+            const debugDiv = document.getElementById('debug');
+            const timestamp = new Date().toLocaleTimeString();
+            debugDiv.innerHTML += `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            debugDiv.style.display = 'block';
+            debugDiv.scrollTop = debugDiv.scrollHeight;
+            console.log(`[${timestamp}] ${type.toUpperCase()}: ${message}`);
+        }
+
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+            log(message, type);
+        }
+
+        // Check for 1Password extension presence
+        function check1PasswordExtension() {
+            log('Checking for 1Password extension...');
+            
+            // Check for common 1Password DOM indicators
+            const indicators = [
+                'com-1password-button',
+                '_1PasswordExtension',
+                'onepassword-extension',
+                '[data-onepassword]',
+                '.onepassword-extension'
+            ];
+            
+            let found = false;
+            indicators.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                if (elements.length > 0) {
+                    log(`Found 1Password indicator: ${selector} (${elements.length} elements)`);
+                    found = true;
+                }
+            });
+            
+            // Check for 1Password CSS injection
+            const stylesheets = Array.from(document.styleSheets);
+            stylesheets.forEach((sheet, index) => {
+                try {
+                    if (sheet.href && sheet.href.includes('1password')) {
+                        log(`Found 1Password stylesheet: ${sheet.href}`);
+                        found = true;
+                    }
+                } catch (e) {
+                    // Cross-origin stylesheet - can't access
+                }
+            });
+            
+            // Check for 1Password script injection
+            const scripts = Array.from(document.scripts);
+            scripts.forEach(script => {
+                if (script.src && script.src.includes('1password')) {
+                    log(`Found 1Password script: ${script.src}`);
+                    found = true;
+                }
+            });
+            
+            if (!found) {
+                log('No 1Password extension indicators found', 'error');
+            }
+            
+            return found;
+        }
+
+        // Enhanced WebAuthn support check
+        function checkWebAuthnSupport() {
+            log('Checking WebAuthn support...');
+            
+            if (!window.PublicKeyCredential) {
+                log('WebAuthn not supported - PublicKeyCredential not available', 'error');
+                return false;
+            }
+            
+            log('WebAuthn supported - PublicKeyCredential available');
+            
+            // Check for platform authenticator
+            PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+                .then(available => {
+                    log(`Platform authenticator available: ${available}`);
+                })
+                .catch(err => {
+                    log(`Error checking platform authenticator: ${err.message}`, 'error');
+                });
+            
+            // Check for conditional mediation support
+            if (PublicKeyCredential.isConditionalMediationAvailable) {
+                PublicKeyCredential.isConditionalMediationAvailable()
+                    .then(available => {
+                        log(`Conditional mediation available: ${available}`);
+                    })
+                    .catch(err => {
+                        log(`Error checking conditional mediation: ${err.message}`, 'error');
+                    });
+            } else {
+                log('Conditional mediation check not available');
+            }
+            
+            return true;
+        }
+
+        // Passkey authentication
+        async function authenticateWithPasskey() {
+            log('Starting passkey authentication...');
+            
+            if (!checkWebAuthnSupport()) {
+                showStatus('WebAuthn not supported in this browser', 'error');
+                return;
+            }
+            
+            try {
+                showStatus('Requesting challenge from server...', 'info');
+                
+                // Get challenge from our secure proxy
+                const challengeResponse = await fetch('https://www.kumpeapps.com/secure/secure_passkey_auth.php?action=amember-challenge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value || 'test@example.com'
+                    })
+                });
+                
+                if (!challengeResponse.ok) {
+                    throw new Error(`Challenge request failed: ${challengeResponse.status}`);
+                }
+                
+                const challengeData = await challengeResponse.json();
+                log(`Challenge received: ${JSON.stringify(challengeData)}`);
+                
+                if (!challengeData.success) {
+                    throw new Error(challengeData.error || 'Failed to get challenge');
+                }
+                
+                showStatus('Authenticating with passkey...', 'info');
+                
+                // Perform WebAuthn authentication
+                const credential = await navigator.credentials.get({
+                    publicKey: challengeData.options,
+                    mediation: 'optional' // Allow 1Password to handle this
+                });
+                
+                log(`Authentication successful, credential ID: ${credential.id}`);
+                
+                // Verify with server
+                showStatus('Verifying authentication...', 'info');
+                
+                const verifyResponse = await fetch('https://www.kumpeapps.com/secure/secure_passkey_auth.php?action=amember-verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        credential: {
+                            id: credential.id,
+                            rawId: Array.from(new Uint8Array(credential.rawId)),
+                            response: {
+                                authenticatorData: Array.from(new Uint8Array(credential.response.authenticatorData)),
+                                clientDataJSON: Array.from(new Uint8Array(credential.response.clientDataJSON)),
+                                signature: Array.from(new Uint8Array(credential.response.signature)),
+                                userHandle: credential.response.userHandle ? Array.from(new Uint8Array(credential.response.userHandle)) : null
+                            },
+                            type: credential.type
+                        }
+                    })
+                });
+                
+                const verifyData = await verifyResponse.json();
+                log(`Verification response: ${JSON.stringify(verifyData)}`);
+                
+                if (verifyData.success) {
+                    showStatus('Passkey authentication successful!', 'success');
+                } else {
+                    showStatus(`Authentication failed: ${verifyData.error}`, 'error');
+                }
+                
+            } catch (error) {
+                log(`Authentication error: ${error.message}`, 'error');
+                showStatus(`Authentication failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Traditional form submission
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            log('Traditional login form submitted');
+            showStatus('Traditional login not implemented in this demo', 'info');
+        });
+
+        // Passkey login button
+        document.getElementById('passkeyLogin').addEventListener('click', function(e) {
+            e.preventDefault();
+            authenticateWithPasskey();
+        });
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Page loaded, initializing...');
+            
+            // Wait a moment for extensions to inject
+            setTimeout(() => {
+                check1PasswordExtension();
+                checkWebAuthnSupport();
+                
+                // Try conditional mediation on the username field
+                if (window.PublicKeyCredential && PublicKeyCredential.isConditionalMediationAvailable) {
+                    PublicKeyCredential.isConditionalMediationAvailable()
+                        .then(available => {
+                            if (available) {
+                                log('Setting up conditional mediation...');
+                                // This would normally be set up with conditional mediation
+                                // but we'll keep it simple for this test
+                            }
+                        });
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
