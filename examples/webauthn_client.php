@@ -78,16 +78,14 @@ function getAmemberConfig($amemberUrl, $apiKey) {
         $rpName = 'aMember Site';
     }
     
-    // Override RP ID for localhost testing OR if accessing from different domain
+    // Only override RP ID for localhost testing
     $currentHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
     if (strpos($currentHost, 'localhost') !== false) {
         $rpId = 'localhost';
         $rpName .= ' (Local Testing)';
-    } elseif (strpos($currentHost, 'kumpe3d.com') !== false) {
-        // If accessing from kumpe3d.com, use that as RP ID
-        $rpId = 'kumpe3d.com';
-        $rpName .= ' (kumpe3d.com)';
     }
+    // For production domains (like kumpe3d.com), use the aMember-configured RP ID
+    // This allows cross-domain WebAuthn via .well-known/webauthn
     
     return [
         'rp_id' => $rpId,

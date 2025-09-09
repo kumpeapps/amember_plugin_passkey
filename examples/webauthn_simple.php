@@ -47,12 +47,15 @@ $apiKey = $config['api_key'];
 function getAmemberConfig() {
     global $amemberUrl, $apiKey;
     
+    error_log("WebAuthn Simple: Calling aMember API for config at: $amemberUrl with key: " . substr($apiKey, 0, 10) . "...");
     $configResult = callAmemberAPI('/misc/passkey', ['action' => 'get-config']);
     
     if ($configResult && isset($configResult['config'])) {
+        error_log("WebAuthn Simple: aMember API returned config: " . json_encode($configResult['config']));
         $rpId = $configResult['config']['rp_id'] ?? parse_url($amemberUrl, PHP_URL_HOST);
         $rpName = $configResult['config']['rp_name'] ?? 'aMember Site';
     } else {
+        error_log("WebAuthn Simple: aMember API call failed or returned no config. Result: " . json_encode($configResult));
         // Fallback to extracting from URL and default name
         $parsedUrl = parse_url($amemberUrl);
         $host = $parsedUrl['host'] ?? 'localhost';
@@ -62,17 +65,16 @@ function getAmemberConfig() {
         $rpName = 'aMember Site';
     }
     
-    // Override RP ID for localhost testing OR if accessing from different domain
+    // Only override RP ID for localhost testing
     $currentHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
     if (strpos($currentHost, 'localhost') !== false) {
         $rpId = 'localhost';
         $rpName .= ' (Local Testing)';
-    } elseif (strpos($currentHost, 'kumpeapps.com') !== false) {
-        // If accessing from kumpeapps.com, use that as RP ID
-        $rpId = 'kumpeapps.com';
-        $rpName .= ' (kumpeapps.com)';
     }
+    // For production domains (like kumpe3d.com), use the aMember-configured RP ID
+    // This allows cross-domain WebAuthn via .well-known/webauthn
     
+    error_log("WebAuthn Simple: Final RP ID: $rpId, RP Name: $rpName");
     return [
         'rp_id' => $rpId,
         'rp_name' => $rpName
