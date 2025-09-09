@@ -520,8 +520,9 @@
                 loginButton.disabled = false;
             }
         }
-        }
                 
+        // Desktop optimization function
+        async function performDesktopOptimizedAuth() {
                 // Desktop optimization: Longer delay for 1Password to be ready
                 console.log('Desktop compatibility: Adding delay for 1Password readiness...');
                 await new Promise(resolve => setTimeout(resolve, 250));
