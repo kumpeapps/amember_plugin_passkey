@@ -239,8 +239,8 @@
             try {
                 showStatus('Requesting challenge from server...', 'info');
                 
-                // Get challenge from our secure proxy
-                const challengeResponse = await fetch('https://www.kumpeapps.com/secure/secure_passkey_auth.php?action=amember-challenge', {
+                // Get challenge from the passkey API
+                const challengeResponse = await fetch('https://www.kumpeapps.com/api/passkey/?action=get_challenge', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
