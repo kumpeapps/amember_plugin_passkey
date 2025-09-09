@@ -286,6 +286,12 @@ $credentialRepository = new SimpleCredentialRepository($amemberUrl, $apiKey);
 $psr17Factory = new Psr17Factory();
 
 // Handle different actions
+// Set REQUEST_METHOD if not set (for command line testing)
+if (!isset($_SERVER['REQUEST_METHOD'])) {
+    $_SERVER['REQUEST_METHOD'] = 'GET';
+}
+
+// Get action from request
 $action = $_GET['action'] ?? $_POST['action'] ?? 'challenge';
 
 switch ($action) {
@@ -307,9 +313,7 @@ switch ($action) {
                 $challenge,
                 60000, // 60 seconds timeout
                 $rpId,
-                $allowCredentials,
-                'preferred',
-                []
+                $allowCredentials
             );
             
             // Store challenge in session for later verification

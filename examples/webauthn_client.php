@@ -1,0 +1,262 @@
+<?php
+// Load config if available
+$config = [];
+if (file_exists('config.php')) {
+    $config = include 'config.php';
+}
+
+$amemberUrl = $config['amember_url'] ?? 'https://kumpeapps.com/members';
+$rpId = $config['rp_id'] ?? 'kumpe3d.com';
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebAuthn Authentication</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin: 20px 0;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .user-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            display: none;
+        }
+        .config-info {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 WebAuthn Authentication</h1>
+        
+        <div class="config-info">
+            <strong>Configuration:</strong><br>
+            RP ID: <?= htmlspecialchars($rpId) ?><br>
+            aMember URL: <?= htmlspecialchars($amemberUrl) ?><br>
+            Server: webauthn_simple.php
+        </div>
+        
+        <div id="status"></div>
+        
+        <button id="authButton" class="btn">
+            🔑 Authenticate with Passkey
+        </button>
+        
+        <div id="user-info" class="user-info"></div>
+    </div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        const authButton = document.getElementById('authButton');
+        const userInfoDiv = document.getElementById('user-info');
+
+        function showStatus(message, type = 'info') {
+            statusDiv.innerHTML = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        function base64urlToArrayBuffer(base64url) {
+            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/').padEnd(base64url.length + (4 - base64url.length % 4) % 4, '=');
+            const binaryString = atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function arrayBufferToBase64url(buffer) {
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+            return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        function displayUserInfo(userData) {
+            userInfoDiv.innerHTML = `
+                <h3>✅ Authentication Successful!</h3>
+                <div class="user-details">
+                    <p><strong>User ID:</strong> ${userData.user_id || 'N/A'}</p>
+                    <p><strong>Name:</strong> ${userData.name || 'N/A'}</p>
+                    <p><strong>Email:</strong> ${userData.email || 'N/A'}</p>
+                    <p><strong>Access:</strong> ${userData.access ? 'Granted' : 'Denied'}</p>
+                </div>
+            `;
+            userInfoDiv.style.display = 'block';
+        }
+
+        async function authenticateWithPasskey() {
+            try {
+                showStatus('Getting challenge from server...', 'info');
+                authButton.disabled = true;
+
+                // Get challenge from simple WebAuthn server
+                const challengeResponse = await fetch('webauthn_simple.php?action=challenge', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                if (!challengeResponse.ok) {
+                    throw new Error(`Challenge request failed: ${challengeResponse.status}`);
+                }
+
+                const challengeData = await challengeResponse.json();
+                console.log('Challenge received:', challengeData);
+
+                if (!challengeData.success) {
+                    throw new Error(challengeData.error || 'Failed to get challenge');
+                }
+
+                // Convert challenge and credential IDs to ArrayBuffers
+                const options = challengeData.options;
+                options.challenge = base64urlToArrayBuffer(options.challenge);
+                
+                if (options.allowCredentials) {
+                    options.allowCredentials = options.allowCredentials.map(cred => ({
+                        ...cred,
+                        id: base64urlToArrayBuffer(cred.id)
+                    }));
+                }
+
+                console.log('Converted options:', options);
+                showStatus('Please authenticate with your passkey...', 'info');
+
+                // Perform WebAuthn authentication
+                const credential = await navigator.credentials.get({
+                    publicKey: options
+                });
+
+                if (!credential) {
+                    throw new Error('No credential received from authenticator');
+                }
+
+                console.log('Credential received:', credential.id);
+                showStatus('Verifying with server...', 'info');
+
+                // Prepare credential data for server
+                const credentialData = {
+                    id: credential.id,
+                    rawId: arrayBufferToBase64url(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+                        authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
+                        signature: arrayBufferToBase64url(credential.response.signature),
+                        userHandle: credential.response.userHandle ? 
+                            arrayBufferToBase64url(credential.response.userHandle) : null
+                    }
+                };
+
+                // Send to server for verification
+                const verifyResponse = await fetch('webauthn_simple.php?action=verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        credential: credentialData
+                    })
+                });
+
+                if (!verifyResponse.ok) {
+                    throw new Error(`Verification failed: ${verifyResponse.status}`);
+                }
+
+                const verifyData = await verifyResponse.json();
+                console.log('Verification result:', verifyData);
+
+                if (verifyData.success) {
+                    showStatus('Authentication successful!', 'success');
+                    displayUserInfo(verifyData);
+                } else {
+                    throw new Error(verifyData.error || 'Verification failed');
+                }
+
+            } catch (error) {
+                console.error('Authentication error:', error);
+                showStatus(`Authentication failed: ${error.message}`, 'error');
+                userInfoDiv.style.display = 'none';
+            } finally {
+                authButton.disabled = false;
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded');
+            
+            if (!window.PublicKeyCredential) {
+                showStatus('WebAuthn not supported in this browser', 'error');
+                authButton.disabled = true;
+                return;
+            }
+
+            authButton.addEventListener('click', authenticateWithPasskey);
+            showStatus('Ready for WebAuthn authentication!', 'success');
+        });
+    </script>
+</body>
+</html>
