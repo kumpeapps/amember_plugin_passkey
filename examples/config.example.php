@@ -1,27 +1,36 @@
 <?php
 /**
- * Configuration file for Passkey Authentication
+ * Configuration file for WebAuthn Passkey Authentication
  * 
- * Copy this file to config.php and update with your actual values.
- * Keep config.php out of version control for security.
+ * SETUP INSTRUCTIONS:
+ * 1. Copy this file to config.php
+ * 2. Update the values below with your actual aMember installation details
+ * 3. Generate an API key in your aMember admin panel (Setup/Configuration -> Advanced -> REST API)
+ * 
+ * NOTE: RP ID and RP Name are automatically retrieved from aMember configuration
  */
 
 return [
     // Your aMember installation URL (no trailing slash)
-    'amember_base_url' => 'https://your-amember-site.com',
+    // Example: 'https://members.yoursite.com' or 'https://yoursite.com/members'
+    'amember_base_url' => 'YOUR_AMEMBER_URL_HERE',
     
-    // Your aMember API key (generate in aMember admin -> Setup/Configuration -> API)
-    // Make sure to enable "by-login-pass" permission for this API key
-    'api_key' => 'your-api-key-here',
+    // Your aMember API key 
+    // Generate this in aMember Admin: Setup/Configuration -> Advanced -> REST API
+    'api_key' => 'YOUR_API_KEY_HERE',
     
-    // API endpoint for passkey verification
+    // API endpoint for passkey verification (usually doesn't need to change)
     'api_endpoint' => '/api/check-access/by-passkey',
     
-    // CORS settings for production
-    'cors_origin' => '*', // Set to your domain in production, e.g., 'https://yourdomain.com'
+    // CORS settings for production - add your domains here
+    'cors_origins' => [
+        'https://www.yoursite.com',
+        'https://yoursite.com',
+        'http://localhost',      // For local testing
+        'file://',              // For file:// testing
+    ],
     
-    // Security settings
-    'timeout' => 30, // API request timeout in seconds
-    'verify_ssl' => true // Set to false only for development with self-signed certificates
+    // WebAuthn settings (optional - will use aMember defaults if not specified)
+    'timeout' => 60000,                  // 60 seconds timeout
+    'userVerification' => 'preferred'    // User verification requirement
 ];
-?>

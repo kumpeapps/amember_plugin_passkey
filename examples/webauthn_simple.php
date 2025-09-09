@@ -12,9 +12,7 @@ if (!file_exists('config.php')) {
         'error' => 'Configuration file config.php not found. Please copy config.example.php to config.php and configure it.',
         'required_config' => [
             'amember_base_url' => 'Your aMember installation URL',
-            'api_key' => 'Your aMember API key',
-            'rp_id' => 'Your domain (e.g., example.com)',
-            'rp_name' => 'Your site name'
+            'api_key' => 'Your aMember API key'
         ]
     ]);
     exit;
@@ -23,10 +21,10 @@ if (!file_exists('config.php')) {
 $config = include 'config.php';
 
 // Validate required config
-$required = ['amember_base_url', 'api_key', 'rp_id'];
+$required = ['amember_base_url', 'api_key'];
 $missing = [];
 foreach ($required as $key) {
-    if (empty($config[$key]) || $config[$key] === 'YOUR_API_KEY_HERE') {
+    if (empty($config[$key]) || $config[$key] === 'YOUR_API_KEY_HERE' || $config[$key] === 'YOUR_AMEMBER_URL_HERE') {
         $missing[] = $key;
     }
 }
@@ -44,8 +42,36 @@ if (!empty($missing)) {
 
 $amemberUrl = rtrim($config['amember_base_url'], '/');
 $apiKey = $config['api_key'];
-$rpId = $config['rp_id'];
-$rpName = $config['rp_name'] ?? 'WebAuthn Site';
+
+// Get RP ID and RP Name from aMember config API
+function getAmemberConfig() {
+    global $amemberUrl, $apiKey;
+    
+    $configResult = callAmemberAPI('/misc/passkey', ['action' => 'get-config']);
+    
+    if ($configResult && isset($configResult['config'])) {
+        return [
+            'rp_id' => $configResult['config']['rp_id'] ?? parse_url($amemberUrl, PHP_URL_HOST),
+            'rp_name' => $configResult['config']['rp_name'] ?? 'aMember Site'
+        ];
+    }
+    
+    // Fallback to extracting from URL and default name
+    $parsedUrl = parse_url($amemberUrl);
+    $host = $parsedUrl['host'] ?? 'localhost';
+    
+    // Remove www. prefix for rp_id
+    $rpId = preg_replace('/^www\./', '', $host);
+    
+    return [
+        'rp_id' => $rpId,
+        'rp_name' => 'aMember Site'
+    ];
+}
+
+$amemberConfig = getAmemberConfig();
+$rpId = $amemberConfig['rp_id'];
+$rpName = $amemberConfig['rp_name'];
 
 // Set CORS headers
 header('Access-Control-Allow-Origin: *');
@@ -202,11 +228,13 @@ switch ($action) {
                 'debug' => [
                     'credentials_found' => count($allowCredentials),
                     'rp_id' => $rpId,
+                    'rp_name' => $rpName,
                     'challenge_length' => strlen($challenge),
                     'stored_credentials' => $storedCredentials,
                     'amember_url' => $amemberUrl,
                     'config_exists' => file_exists('config.php'),
-                    'main_config_exists' => file_exists('../config.php')
+                    'main_config_exists' => file_exists('../config.php'),
+                    'config_source' => 'aMember API or URL fallback'
                 ]
             ]);
             

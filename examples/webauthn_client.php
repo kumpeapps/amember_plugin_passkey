@@ -6,10 +6,10 @@ if (!file_exists('config.php')) {
     $config = include 'config.php';
     
     // Validate required config
-    $required = ['amember_base_url', 'api_key', 'rp_id'];
+    $required = ['amember_base_url', 'api_key'];
     $missing = [];
     foreach ($required as $key) {
-        if (empty($config[$key]) || $config[$key] === 'YOUR_API_KEY_HERE') {
+        if (empty($config[$key]) || $config[$key] === 'YOUR_API_KEY_HERE' || $config[$key] === 'YOUR_AMEMBER_URL_HERE') {
             $missing[] = $key;
         }
     }
@@ -31,9 +31,8 @@ if (isset($error)) {
             <ul>
                 <li><code>amember_base_url</code> - Your aMember installation URL</li>
                 <li><code>api_key</code> - Your aMember API key</li>
-                <li><code>rp_id</code> - Your domain (e.g., example.com)</li>
-                <li><code>rp_name</code> - Your site name (optional)</li>
             </ul>
+            <p><em>Note: RP ID and RP Name will be automatically retrieved from aMember configuration.</em></p>
         </div>
     </body></html>
     <?php
@@ -41,8 +40,48 @@ if (isset($error)) {
 }
 
 $amemberUrl = rtrim($config['amember_base_url'], '/');
-$rpId = $config['rp_id'];
-$rpName = $config['rp_name'] ?? 'WebAuthn Site';
+
+// Get RP configuration from aMember (or fallback)
+function getAmemberConfig($amemberUrl, $apiKey) {
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $amemberUrl . '/api/misc/passkey');
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+        '_key' => $apiKey,
+        'action' => 'get-config'
+    ]));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($httpCode === 200 && $response) {
+        $data = json_decode($response, true);
+        if ($data && isset($data['config'])) {
+            return [
+                'rp_id' => $data['config']['rp_id'] ?? parse_url($amemberUrl, PHP_URL_HOST),
+                'rp_name' => $data['config']['rp_name'] ?? 'aMember Site'
+            ];
+        }
+    }
+    
+    // Fallback to extracting from URL
+    $parsedUrl = parse_url($amemberUrl);
+    $host = $parsedUrl['host'] ?? 'localhost';
+    $rpId = preg_replace('/^www\./', '', $host);
+    
+    return [
+        'rp_id' => $rpId,
+        'rp_name' => 'aMember Site'
+    ];
+}
+
+$amemberConfig = getAmemberConfig($amemberUrl, $config['api_key']);
+$rpId = $amemberConfig['rp_id'];
+$rpName = $amemberConfig['rp_name'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
