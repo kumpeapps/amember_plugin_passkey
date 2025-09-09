@@ -62,10 +62,15 @@ function getAmemberConfig() {
         $rpName = 'aMember Site';
     }
     
-    // Override RP ID for localhost testing
-    if (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'localhost') !== false) {
+    // Override RP ID for localhost testing OR if accessing from different domain
+    $currentHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    if (strpos($currentHost, 'localhost') !== false) {
         $rpId = 'localhost';
         $rpName .= ' (Local Testing)';
+    } elseif (strpos($currentHost, 'kumpe3d.com') !== false) {
+        // If accessing from kumpe3d.com, use that as RP ID
+        $rpId = 'kumpe3d.com';
+        $rpName .= ' (kumpe3d.com)';
     }
     
     return [
@@ -134,49 +139,62 @@ function getStoredCredentials() {
     $result = callAmemberAPI('/misc/passkey', ['action' => 'get-credentials']);
     
     if ($result && isset($result['credentials'])) {
+        error_log("WebAuthn Simple: Got credentials from aMember API: " . count($result['credentials']));
         return $result['credentials'];
+    } else {
+        error_log("WebAuthn Simple: aMember API call failed or returned no credentials");
     }
     
-    // Try to read directly from database if config file exists
-    if (file_exists('../config.php')) {
-        try {
-            $amemberConfig = include '../config.php';
-            $dbConfig = $amemberConfig['db'] ?? null;
-            
-            if ($dbConfig) {
-                $pdo = new PDO(
-                    "mysql:host={$dbConfig['host']};dbname={$dbConfig['db']};charset=utf8mb4",
-                    $dbConfig['user'],
-                    $dbConfig['pass'],
-                    [
-                        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-                    ]
-                );
+    // Try to read directly from database if we can find aMember config
+    $configPaths = ['../config.php', '../../config.php', '../../../config.php'];
+    foreach ($configPaths as $configPath) {
+        if (file_exists($configPath)) {
+            try {
+                error_log("WebAuthn Simple: Trying config at: " . $configPath);
+                $amemberConfig = include $configPath;
                 
-                $tableName = ($dbConfig['prefix'] ?? 'am_') . 'passkey_credentials';
-                $stmt = $pdo->prepare("SELECT credential_id, public_key, user_id FROM {$tableName} WHERE 1");
-                $stmt->execute();
-                
-                $credentials = [];
-                while ($row = $stmt->fetch()) {
-                    $credentials[] = [
-                        'id' => $row['credential_id'],
-                        'type' => 'public-key',
-                        'transports' => ['internal', 'hybrid', 'usb'],
-                        'user_id' => $row['user_id']
-                    ];
+                if (isset($amemberConfig['db'])) {
+                    $dbConfig = $amemberConfig['db'];
+                    
+                    $pdo = new PDO(
+                        "mysql:host={$dbConfig['host']};dbname={$dbConfig['db']};charset=utf8mb4",
+                        $dbConfig['user'],
+                        $dbConfig['pass'],
+                        [
+                            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+                        ]
+                    );
+                    
+                    $tableName = ($dbConfig['prefix'] ?? 'am_') . 'passkey_credentials';
+                    error_log("WebAuthn Simple: Trying to query table: " . $tableName);
+                    
+                    $stmt = $pdo->prepare("SELECT credential_id, public_key, user_id, created_at FROM {$tableName} WHERE 1");
+                    $stmt->execute();
+                    
+                    $credentials = [];
+                    while ($row = $stmt->fetch()) {
+                        $credentials[] = [
+                            'id' => $row['credential_id'],
+                            'type' => 'public-key',
+                            'transports' => ['internal', 'hybrid', 'usb'],
+                            'user_id' => $row['user_id'],
+                            'public_key' => $row['public_key']
+                        ];
+                    }
+                    
+                    error_log("WebAuthn Simple: Found " . count($credentials) . " credentials in database");
+                    return $credentials;
                 }
-                
-                return $credentials;
+            } catch (Exception $e) {
+                error_log("WebAuthn Simple: Database connection failed: " . $e->getMessage());
             }
-        } catch (Exception $e) {
-            error_log("Database connection failed: " . $e->getMessage());
         }
     }
     
     // Fallback - return empty array if no credentials found
     // This will trigger discoverable/platform credential authentication
+    error_log("WebAuthn Simple: No credentials found, using discoverable credential mode");
     return [];
 }
 
@@ -233,7 +251,10 @@ switch ($action) {
                     'amember_url' => $amemberUrl,
                     'config_exists' => file_exists('config.php'),
                     'main_config_exists' => file_exists('../config.php'),
-                    'config_source' => 'aMember API or URL fallback'
+                    'config_source' => 'aMember API or URL fallback',
+                    'current_host' => $_SERVER['HTTP_HOST'] ?? 'unknown',
+                    'api_call_attempted' => true,
+                    'database_search_attempted' => true
                 ]
             ]);
             

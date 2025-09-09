@@ -78,10 +78,15 @@ function getAmemberConfig($amemberUrl, $apiKey) {
         $rpName = 'aMember Site';
     }
     
-    // Override RP ID for localhost testing
-    if (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'localhost') !== false) {
+    // Override RP ID for localhost testing OR if accessing from different domain
+    $currentHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    if (strpos($currentHost, 'localhost') !== false) {
         $rpId = 'localhost';
         $rpName .= ' (Local Testing)';
+    } elseif (strpos($currentHost, 'kumpe3d.com') !== false) {
+        // If accessing from kumpe3d.com, use that as RP ID
+        $rpId = 'kumpe3d.com';
+        $rpName .= ' (kumpe3d.com)';
     }
     
     return [
