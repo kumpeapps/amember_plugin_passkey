@@ -240,7 +240,7 @@
                 const config = await response.json();
                 console.log('📋 Config loaded:', config);
 
-                if (config.success) {
+                if (config.ok || config.success) {
                     currentConfig = config;
                     return true;
                 } else {
