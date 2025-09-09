@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>aMember-Compatible Passkey Test (Same Domain)</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status { 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 15px 30px; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover:not(:disabled) { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        .debug { 
+            background: #f8f9fa; 
+            border: 1px solid #dee2e6; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            font-family: monospace; 
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .instructions {
+            background: #e7f3ff;
+            border: 1px solid #b3d7ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 aMember Passkey Test (Same Domain)</h1>
+        
+        <div class="instructions">
+            <h3>📍 Same Domain Test</h3>
+            <p>This test runs on the same domain as aMember to avoid CORS issues.</p>
+            <p><strong>Current domain:</strong> <span id="currentDomain"></span></p>
+            <p><strong>aMember domain:</strong> www.kumpeapps.com</p>
+        </div>
+        
+        <div id="status">Ready to test same-domain aMember API...</div>
+        
+        <button id="authButton" onclick="testAmemberAuth()">🔑 Test aMember API (Same Domain)</button>
+        
+        <div class="debug" id="debugLog">Debug logs will appear here...</div>
+    </div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        const debugLog = document.getElementById('debugLog');
+        
+        // Show current domain
+        document.getElementById('currentDomain').textContent = window.location.hostname;
+        
+        function log(message) {
+            console.log(message);
+            debugLog.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '<br>';
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+        
+        function showStatus(message, type = 'info') {
+            statusDiv.innerHTML = message;
+            statusDiv.className = 'status ' + (type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : '');
+            log('STATUS: ' + message.replace(/<[^>]*>/g, ''));
+        }
+
+        // Convert base64url to Uint8Array (exactly like aMember does)
+        function base64urlToBase64(base64url) {
+            return base64url.replace(/-/g, "+").replace(/_/g, "/").padEnd(base64url.length + (4 - base64url.length % 4) % 4, "=");
+        }
+
+        function base64urlToUint8Array(base64url) {
+            return Uint8Array.from(atob(base64urlToBase64(base64url)), function(c) { 
+                return c.charCodeAt(0); 
+            });
+        }
+
+        // Convert Uint8Array to base64url (for response)
+        function uint8ArrayToBase64url(buffer) {
+            return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=/g, '');
+        }
+
+        // Test using actual aMember API from same domain
+        async function testAmemberAuth() {
+            const button = document.getElementById('authButton');
+            
+            try {
+                log('🚀 Starting same-domain aMember authentication');
+                log('🌐 Current domain: ' + window.location.hostname);
+                button.disabled = true;
+                showStatus('🔑 Initializing with aMember API (same domain)...');
+                
+                // Check if we're on the right domain
+                if (window.location.hostname !== 'www.kumpeapps.com') {
+                    throw new Error('This test must run on www.kumpeapps.com to avoid CORS issues. Current domain: ' + window.location.hostname);
+                }
+                
+                // Step 1: Get challenge and options from aMember (same domain - no CORS)
+                log('📡 Calling aMember passkey-login-init (same domain)...');
+                const response = await fetch("/misc/passkey", {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: "action=passkey-login-init"
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`aMember API failed: ${response.status} ${response.statusText}`);
+                }
+                
+                const loginData = await response.json();
+                log('📦 aMember response: ' + JSON.stringify(loginData, null, 2));
+                
+                if (loginData.status !== "ok") {
+                    throw new Error(loginData.error || "aMember login initialization failed");
+                }
+                
+                let options = loginData.options;
+                
+                // Step 2: Convert options exactly like aMember does
+                log('🔧 Converting aMember options for WebAuthn...');
+                log('- Original challenge: ' + options.challenge);
+                log('- allowCredentials count: ' + options.allowCredentials.length);
+                
+                // Convert base64url challenge to Uint8Array (aMember format)
+                options.challenge = base64urlToUint8Array(options.challenge);
+                
+                // Convert allowCredentials if present
+                if (options.allowCredentials) {
+                    options.allowCredentials = options.allowCredentials.map(cred => {
+                        cred.id = base64urlToUint8Array(cred.id);
+                        return cred;
+                    });
+                }
+                
+                // Add RP ID from aMember (same domain)
+                options.rpId = "www.kumpeapps.com";
+                
+                log('✅ Options converted for WebAuthn');
+                log('- Challenge length: ' + options.challenge.length);
+                log('- RP ID: ' + options.rpId);
+                log('- Domain match: ' + (options.rpId === window.location.hostname));
+                
+                // Step 3: Call WebAuthn with conditional mediation (like aMember)
+                showStatus('🔐 Please authenticate with your passkey...');
+                log('🎯 Calling navigator.credentials.get with conditional mediation (same domain)...');
+                
+                const assertion = await navigator.credentials.get({
+                    publicKey: options,
+                    mediation: "conditional"  // This is exactly what aMember uses!
+                });
+                
+                if (!assertion) {
+                    throw new Error('No assertion received from WebAuthn');
+                }
+                
+                log('✅ WebAuthn assertion received!');
+                log('- Assertion ID: ' + assertion.id.substring(0, 20) + '...');
+                log('- Type: ' + assertion.type);
+                
+                // Step 4: Convert response back to aMember format
+                const finishData = {
+                    id: assertion.id,
+                    rawId: uint8ArrayToBase64url(assertion.rawId),
+                    type: assertion.type,
+                    response: {
+                        authenticatorData: uint8ArrayToBase64url(assertion.response.authenticatorData),
+                        clientDataJSON: uint8ArrayToBase64url(assertion.response.clientDataJSON),
+                        signature: uint8ArrayToBase64url(assertion.response.signature)
+                    }
+                };
+                
+                log('📡 Sending finish data to aMember (same domain)...');
+                
+                // Step 5: Send to aMember for verification (same domain)
+                const finishResponse = await fetch("/misc/passkey", {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: "action=passkey-login-finish&data=" + encodeURIComponent(JSON.stringify(finishData))
+                });
+                
+                if (!finishResponse.ok) {
+                    throw new Error(`aMember finish failed: ${finishResponse.status} ${finishResponse.statusText}`);
+                }
+                
+                const finishResult = await finishResponse.json();
+                log('📦 aMember finish response: ' + JSON.stringify(finishResult, null, 2));
+                
+                if (finishResult.status === 'ok') {
+                    showStatus('✅ aMember authentication successful!', 'success');
+                    log('🎉 Login completed successfully with aMember!');
+                } else {
+                    throw new Error(finishResult.error || 'aMember authentication failed');
+                }
+                
+            } catch (error) {
+                log('❌ Error: ' + error.name + ' - ' + error.message);
+                
+                if (error.name === 'NotAllowedError') {
+                    showStatus('❌ 1Password cancelled or not responding', 'error');
+                } else if (error.name === 'SecurityError') {
+                    showStatus('❌ Security error - check HTTPS and domain configuration', 'error');
+                } else if (error.message.includes('domain')) {
+                    showStatus('❌ Wrong domain - upload this file to www.kumpeapps.com', 'warning');
+                } else {
+                    showStatus('❌ ' + error.name + ': ' + error.message, 'error');
+                }
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🚀 Page loaded on domain: ' + window.location.hostname);
+            if (window.location.hostname === 'www.kumpeapps.com') {
+                showStatus('✅ Ready to test with aMember API (same domain)!', 'success');
+            } else {
+                showStatus('⚠️ Upload this file to www.kumpeapps.com to avoid CORS issues', 'warning');
+            }
+        });
+    </script>
+</body>
+</html>

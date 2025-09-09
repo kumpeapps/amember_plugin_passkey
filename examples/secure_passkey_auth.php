@@ -301,6 +301,65 @@ switch ($action) {
         echo json_encode($credentials);
         break;
         
+    case 'amember-challenge':
+        // Generate aMember-compatible WebAuthn challenge
+        error_log('Secure Passkey Auth: Generating aMember-compatible challenge');
+        
+        // Generate base64url-encoded challenge (like aMember does)
+        $challengeBytes = random_bytes(32);
+        $challenge = base64url_encode($challengeBytes);
+        
+        // Get aMember configuration
+        $config = getPasskeyConfig();
+        
+        // Return aMember-compatible challenge format
+        $response = [
+            'status' => 'ok',
+            'options' => [
+                'challenge' => $challenge,
+                'timeout' => intval($config['timeout'] ?? 60000),
+                'userVerification' => $config['userVerification'] ?? 'preferred',
+                'allowCredentials' => [], // Empty for discoverable credentials like aMember
+                'extensions' => []
+            ]
+        ];
+        
+        error_log('Secure Passkey Auth: aMember-compatible challenge generated: ' . json_encode($response));
+        echo json_encode($response);
+        break;
+        
+    case 'amember-verify':
+        // Verify using aMember's REST API
+        error_log('Secure Passkey Auth: Verifying with aMember REST API');
+        
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed']);
+            break;
+        }
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!isset($input['credential'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Credential data required']);
+            exit;
+        }
+        
+        // Send to aMember for verification
+        $verifyResponse = makeAmemberRequest('/api/check-access/by-passkey', [
+            'credential' => $input['credential']
+        ]);
+        
+        if (!$verifyResponse['success']) {
+            http_response_code(500);
+            echo json_encode(['error' => 'aMember verification failed: ' . $verifyResponse['error']]);
+            exit;
+        }
+        
+        $result = json_decode($verifyResponse['body'], true);
+        echo json_encode($result);
+        break;
+
     case 'authenticate':
         // Handle passkey authentication
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -324,4 +383,57 @@ switch ($action) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid action']);
 }
+
+// Helper functions for aMember compatibility
+
+/**
+ * Base64url encode (for WebAuthn challenge format)
+ */
+function base64url_encode($data) {
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+/**
+ * Base64url decode
+ */
+function base64url_decode($data) {
+    return base64_decode(strtr($data, '-_', '+/') . str_repeat('=', (4 - strlen($data) % 4) % 4));
+}
+
+/**
+ * Make request to aMember API with proper authentication
+ */
+function makeAmemberRequest($endpoint, $data = []) {
+    global $amemberUrl, $apiKey;
+    
+    $url = rtrim($amemberUrl, '/') . $endpoint;
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'X-API-Key: ' . $apiKey
+    ]);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // For development
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+    
+    if ($error) {
+        return ['success' => false, 'error' => 'cURL error: ' . $error];
+    }
+    
+    if ($httpCode !== 200) {
+        return ['success' => false, 'error' => 'HTTP ' . $httpCode . ': ' . $response];
+    }
+    
+    return ['success' => true, 'body' => $response];
+}
+
 ?>
