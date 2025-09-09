@@ -50,22 +50,27 @@ function getAmemberConfig() {
     $configResult = callAmemberAPI('/misc/passkey', ['action' => 'get-config']);
     
     if ($configResult && isset($configResult['config'])) {
-        return [
-            'rp_id' => $configResult['config']['rp_id'] ?? parse_url($amemberUrl, PHP_URL_HOST),
-            'rp_name' => $configResult['config']['rp_name'] ?? 'aMember Site'
-        ];
+        $rpId = $configResult['config']['rp_id'] ?? parse_url($amemberUrl, PHP_URL_HOST);
+        $rpName = $configResult['config']['rp_name'] ?? 'aMember Site';
+    } else {
+        // Fallback to extracting from URL and default name
+        $parsedUrl = parse_url($amemberUrl);
+        $host = $parsedUrl['host'] ?? 'localhost';
+        
+        // Remove www. prefix for rp_id
+        $rpId = preg_replace('/^www\./', '', $host);
+        $rpName = 'aMember Site';
     }
     
-    // Fallback to extracting from URL and default name
-    $parsedUrl = parse_url($amemberUrl);
-    $host = $parsedUrl['host'] ?? 'localhost';
-    
-    // Remove www. prefix for rp_id
-    $rpId = preg_replace('/^www\./', '', $host);
+    // Override RP ID for localhost testing
+    if (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'localhost') !== false) {
+        $rpId = 'localhost';
+        $rpName .= ' (Local Testing)';
+    }
     
     return [
         'rp_id' => $rpId,
-        'rp_name' => 'aMember Site'
+        'rp_name' => $rpName
     ];
 }
 

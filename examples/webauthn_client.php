@@ -61,21 +61,32 @@ function getAmemberConfig($amemberUrl, $apiKey) {
     if ($httpCode === 200 && $response) {
         $data = json_decode($response, true);
         if ($data && isset($data['config'])) {
-            return [
-                'rp_id' => $data['config']['rp_id'] ?? parse_url($amemberUrl, PHP_URL_HOST),
-                'rp_name' => $data['config']['rp_name'] ?? 'aMember Site'
-            ];
+            $rpId = $data['config']['rp_id'] ?? parse_url($amemberUrl, PHP_URL_HOST);
+            $rpName = $data['config']['rp_name'] ?? 'aMember Site';
+        } else {
+            // Fallback to extracting from URL
+            $parsedUrl = parse_url($amemberUrl);
+            $host = $parsedUrl['host'] ?? 'localhost';
+            $rpId = preg_replace('/^www\./', '', $host);
+            $rpName = 'aMember Site';
         }
+    } else {
+        // Fallback to extracting from URL
+        $parsedUrl = parse_url($amemberUrl);
+        $host = $parsedUrl['host'] ?? 'localhost';
+        $rpId = preg_replace('/^www\./', '', $host);
+        $rpName = 'aMember Site';
     }
     
-    // Fallback to extracting from URL
-    $parsedUrl = parse_url($amemberUrl);
-    $host = $parsedUrl['host'] ?? 'localhost';
-    $rpId = preg_replace('/^www\./', '', $host);
+    // Override RP ID for localhost testing
+    if (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'localhost') !== false) {
+        $rpId = 'localhost';
+        $rpName .= ' (Local Testing)';
+    }
     
     return [
         'rp_id' => $rpId,
-        'rp_name' => 'aMember Site'
+        'rp_name' => $rpName
     ];
 }
 
