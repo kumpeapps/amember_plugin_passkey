@@ -226,7 +226,7 @@
             try {
                 console.log('🔄 Loading passkey configuration from aMember...');
                 
-                const response = await fetch(SECURE_AUTH_ENDPOINT + '?action=get_config', {
+                const response = await fetch(SECURE_AUTH_ENDPOINT + '?action=config', {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -258,11 +258,14 @@
             try {
                 console.log('🔄 Getting authentication options from server...');
                 
-                const response = await fetch(SECURE_AUTH_ENDPOINT + '?action=get_options', {
+                const response = await fetch(SECURE_AUTH_ENDPOINT + '?action=amember-challenge', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                    }
+                    },
+                    body: JSON.stringify({
+                        username: document.getElementById('amember_login').value || 'test@example.com'
+                    })
                 });
 
                 if (!response.ok) {
@@ -272,7 +275,7 @@
                 const options = await response.json();
                 console.log('📋 Auth options received:', options);
 
-                if (options.success) {
+                if (options.status === 'ok') {
                     // Convert challenge from base64url to ArrayBuffer
                     if (options.options.challenge) {
                         options.options.challenge = base64urlToArrayBuffer(options.options.challenge);
@@ -342,7 +345,7 @@
                 };
 
                 // Send credential to server for verification
-                const response = await fetch(SECURE_AUTH_ENDPOINT + '?action=authenticate', {
+                const response = await fetch(SECURE_AUTH_ENDPOINT + '?action=amember-verify', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -359,7 +362,7 @@
                 const result = await response.json();
                 console.log('📋 Authentication result:', result);
 
-                if (result.ok && result.access) {
+                if (result.ok || result.access) {
                     showStatus('✅ Authentication successful!', 'success');
                     displayUserInfo(result);
                 } else {
