@@ -459,12 +459,17 @@ $rpName = $amemberConfig['rp_name'];
                             delete fallbackOptions.allowCredentials;
                             
                             console.log('Fallback options (discoverable credentials):', fallbackOptions);
+                            console.log('Attempting fallback authentication...');
+                            console.log('Fallback RP ID:', currentDomain);
+                            console.log('This may prompt for existing credentials on this domain');
+                            
                             showStatus('Trying with current domain credentials...', 'info');
                             
                             const fallbackCredential = await navigator.credentials.get({
                                 publicKey: fallbackOptions
                             });
                             
+                            console.log('SUCCESS: Fallback credential received!');
                             if (!fallbackCredential) {
                                 throw new Error('No credential received from fallback authenticator');
                             }
@@ -481,6 +486,11 @@ $rpName = $amemberConfig['rp_name'];
                             
                         } catch (fallbackError) {
                             console.warn('Fallback authentication also failed:', fallbackError);
+                            console.warn('Fallback error details:', {
+                                name: fallbackError.name,
+                                message: fallbackError.message,
+                                stack: fallbackError.stack
+                            });
                             
                             // If fallback fails with NotAllowedError, it likely means no credentials exist
                             if (fallbackError.name === 'NotAllowedError') {
