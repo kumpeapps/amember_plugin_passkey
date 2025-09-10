@@ -291,10 +291,15 @@ switch ($action) {
             // Get credential data from POST
             $input = json_decode(file_get_contents('php://input'), true);
             $credentialData = $input['credential'] ?? null;
+            $fallbackMode = $input['fallback_mode'] ?? false;
+            $fallbackRpId = $input['fallback_rp_id'] ?? null;
             
             if (!$credentialData) {
                 throw new Exception('No credential data provided');
             }
+            
+            error_log("WebAuthn Simple: Verify request - Fallback mode: " . ($fallbackMode ? 'true' : 'false') . 
+                      ($fallbackRpId ? ", Fallback RP ID: $fallbackRpId" : ""));
             
             // Check if we have a stored challenge
             if (!isset($_SESSION['webauthn_challenge'])) {
@@ -322,12 +327,42 @@ switch ($action) {
                 throw new Exception('Challenge mismatch');
             }
             
+            // Get RP ID - use fallback if in fallback mode
+            if ($fallbackMode && $fallbackRpId) {
+                $verificationRpId = $fallbackRpId;
+                error_log("WebAuthn Simple: Using fallback RP ID for verification: $verificationRpId");
+            } else {
+                $verificationRpId = $rpId;
+                error_log("WebAuthn Simple: Using standard RP ID for verification: $verificationRpId");
+            }
+            
             // Verify origin
-            $expectedOrigin = 'https://' . $rpId;
-            if ($clientData['origin'] !== $expectedOrigin) {
+            $expectedOrigin = 'https://' . $verificationRpId;
+            $actualOrigin = $clientData['origin'];
+            
+            // Check if origin matches the configured RP ID
+            $originValid = ($actualOrigin === $expectedOrigin);
+            
+            // If origin doesn't match, check if we're using fallback mode
+            if (!$originValid) {
+                // Extract domain from actual origin
+                $parsedOrigin = parse_url($actualOrigin);
+                if ($parsedOrigin && isset($parsedOrigin['host'])) {
+                    $originDomain = $parsedOrigin['host'];
+                    $originDomain = preg_replace('/^www\./', '', $originDomain); // Remove www prefix
+                    
+                    // Check if RP ID matches the actual origin domain (fallback mode)
+                    if ($verificationRpId === $originDomain) {
+                        $originValid = true;
+                        error_log("WebAuthn Simple: Using fallback mode - RP ID matches origin domain: $verificationRpId");
+                    }
+                }
+            }
+            
+            if (!$originValid) {
                 // Allow localhost for testing
-                if (!in_array($clientData['origin'], ['http://localhost:8080', 'http://localhost:3000'])) {
-                    throw new Exception('Origin mismatch: expected ' . $expectedOrigin . ', got ' . $clientData['origin']);
+                if (!in_array($actualOrigin, ['http://localhost:8080', 'http://localhost:3000'])) {
+                    throw new Exception('Origin mismatch: expected ' . $expectedOrigin . ', got ' . $actualOrigin);
                 }
             }
             

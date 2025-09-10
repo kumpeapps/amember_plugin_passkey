@@ -236,6 +236,7 @@ $rpName = $amemberConfig['rp_name'];
         }
 
         async function authenticateWithPasskey() {
+            let options = null; // Declare options at function scope
             try {
                 showStatus('Getting challenge from server...', 'info');
                 authButton.disabled = true;
@@ -260,7 +261,7 @@ $rpName = $amemberConfig['rp_name'];
                 }
 
                 // Convert challenge and credential IDs to ArrayBuffers
-                const options = challengeData.options;
+                options = challengeData.options;
                 options.challenge = base64urlToArrayBuffer(options.challenge);
                 
                 // Only convert allowCredentials if they exist
@@ -286,6 +287,22 @@ $rpName = $amemberConfig['rp_name'];
                     return;
                 }
                 
+                // Browser compatibility check for cross-domain WebAuthn
+                console.log('Browser info:');
+                console.log('User Agent:', navigator.userAgent);
+                console.log('WebAuthn supported:', !!window.PublicKeyCredential);
+                
+                // Check if this is a known problematic browser combination
+                const isChrome = navigator.userAgent.includes('Chrome');
+                const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
+                const isFirefox = navigator.userAgent.includes('Firefox');
+                
+                console.log('Browser detection:', { isChrome, isSafari, isFirefox });
+                
+                if (isSafari) {
+                    console.warn('Safari has stricter cross-domain WebAuthn requirements');
+                }
+                
                 // Check if .well-known/webauthn is accessible
                 try {
                     const wellKnownResponse = await fetch(`https://www.kumpeapps.com/.well-known/webauthn`);
@@ -305,16 +322,61 @@ $rpName = $amemberConfig['rp_name'];
                 showStatus('Please authenticate with your passkey...', 'info');
 
                 // Perform WebAuthn authentication
-                const credential = await navigator.credentials.get({
-                    publicKey: options
-                });
+                console.log('Calling navigator.credentials.get with options:', options);
+                
+                // Try the cross-domain authentication first
+                try {
+                    const credential = await navigator.credentials.get({
+                        publicKey: options
+                    });
+                    
+                    if (!credential) {
+                        throw new Error('No credential received from authenticator');
+                    }
 
-                if (!credential) {
-                    throw new Error('No credential received from authenticator');
+                    console.log('Credential received:', credential.id);
+                    showStatus('Verifying with server...', 'info');
+                    
+                    // Continue with verification...
+                    await handleCredentialVerification(credential);
+                    
+                } catch (crossDomainError) {
+                    console.warn('Cross-domain WebAuthn failed:', crossDomainError);
+                    
+                    if (crossDomainError.name === 'SecurityError' && crossDomainError.message.includes('RPID')) {
+                        console.log('Attempting fallback with current domain as RP ID...');
+                        
+                        // Try with current domain as RP ID
+                        const fallbackOptions = { ...options };
+                        const currentDomain = window.location.hostname.replace(/^www\./, '');
+                        fallbackOptions.rpId = currentDomain;
+                        
+                        console.log('Fallback options:', fallbackOptions);
+                        showStatus('Trying alternative authentication method...', 'info');
+                        
+                        const fallbackCredential = await navigator.credentials.get({
+                            publicKey: fallbackOptions
+                        });
+                        
+                        if (!fallbackCredential) {
+                            throw new Error('No credential received from fallback authenticator');
+                        }
+                        
+                        // Mark as fallback mode
+                        fallbackCredential._fallbackMode = true;
+                        fallbackCredential._fallbackRpId = currentDomain;
+                        
+                        console.log('Fallback credential received:', fallbackCredential.id);
+                        showStatus('Verifying with server...', 'info');
+                        
+                        // Continue with verification...
+                        await handleCredentialVerification(fallbackCredential);
+                    } else {
+                        throw crossDomainError;
+                    }
                 }
-
-                console.log('Credential received:', credential.id);
-                showStatus('Verifying with server...', 'info');
+                
+                async function handleCredentialVerification(credential) {
 
                 // Prepare credential data for server
                 const credentialData = {
@@ -331,14 +393,23 @@ $rpName = $amemberConfig['rp_name'];
                 };
 
                 // Send to server for verification
+                const verifyPayload = {
+                    credential: credentialData
+                };
+                
+                // Include fallback information if using fallback mode
+                if (credential._fallbackMode) {
+                    verifyPayload.fallback_mode = true;
+                    verifyPayload.fallback_rp_id = credential._fallbackRpId;
+                    console.log('Including fallback mode information:', verifyPayload.fallback_rp_id);
+                }
+                
                 const verifyResponse = await fetch('webauthn_simple.php?action=verify', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        credential: credentialData
-                    })
+                    body: JSON.stringify(verifyPayload)
                 });
 
                 if (!verifyResponse.ok) {
