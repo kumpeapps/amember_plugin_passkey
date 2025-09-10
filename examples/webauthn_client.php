@@ -299,6 +299,8 @@ $rpName = $amemberConfig['rp_name'];
                 console.log('Current origin:', window.location.origin);
                 console.log('RP ID:', options.rpId);
                 console.log('Cross-domain setup: Origin', window.location.origin, 'vs RP ID', options.rpId);
+                console.log('allowCredentials count:', options.allowCredentials ? options.allowCredentials.length : 'none (discoverable mode)');
+                console.log('User verification:', options.userVerification);
                 
                 // Check HTTPS requirement
                 if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
@@ -357,8 +359,11 @@ $rpName = $amemberConfig['rp_name'];
                 // Safari-specific workaround: Add a small delay to ensure user activation context
                 if (isSafari) {
                     console.log('Safari: Adding activation context preservation...');
+                    console.log('Safari: About to call navigator.credentials.get()');
                     await new Promise(resolve => setTimeout(resolve, 10));
                 }
+                
+                console.log('Making WebAuthn credentials.get() call...');
                 
                 // Define credential verification function
                 async function handleCredentialVerification(credential) {
@@ -415,10 +420,14 @@ $rpName = $amemberConfig['rp_name'];
                 
                 // Try the cross-domain authentication first
                 try {
+                    console.log('Attempting cross-domain WebAuthn with RP ID:', options.rpId);
+                    console.log('From origin:', window.location.origin);
+                    
                     const credential = await navigator.credentials.get({
                         publicKey: options
                     });
                     
+                    console.log('SUCCESS: Cross-domain WebAuthn credential received!');
                     if (!credential) {
                         throw new Error('No credential received from authenticator');
                     }
@@ -431,6 +440,11 @@ $rpName = $amemberConfig['rp_name'];
                     
                 } catch (crossDomainError) {
                     console.warn('Cross-domain WebAuthn failed:', crossDomainError);
+                    console.warn('Error details:', {
+                        name: crossDomainError.name,
+                        message: crossDomainError.message,
+                        stack: crossDomainError.stack
+                    });
                     
                     if (crossDomainError.name === 'SecurityError' && crossDomainError.message.includes('RPID')) {
                         console.log('Attempting fallback with current domain as RP ID...');
