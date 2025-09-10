@@ -198,9 +198,15 @@ $rpName = $amemberConfig['rp_name'];
     </div>
 
     <script>
+        // Global variables
         const statusDiv = document.getElementById('status');
         const authButton = document.getElementById('authButton');
         const userInfoDiv = document.getElementById('user-info');
+        
+        // Browser detection - declare once
+        const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
+        const isChrome = navigator.userAgent.includes('Chrome');
+        const isFirefox = navigator.userAgent.includes('Firefox');
 
         function showStatus(message, type = 'info') {
             statusDiv.innerHTML = message;
@@ -247,7 +253,6 @@ $rpName = $amemberConfig['rp_name'];
                 authButton.disabled = true;
 
                 // Check if this is Safari and log compatibility info
-                const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
                 if (isSafari) {
                     console.log('Safari detected - using enhanced compatibility mode');
                     console.log('Safari version:', navigator.userAgent);
@@ -308,10 +313,6 @@ $rpName = $amemberConfig['rp_name'];
                 console.log('WebAuthn supported:', !!window.PublicKeyCredential);
                 
                 // Check if this is a known problematic browser combination
-                const isChrome = navigator.userAgent.includes('Chrome');
-                const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
-                const isFirefox = navigator.userAgent.includes('Firefox');
-                
                 console.log('Browser detection:', { isChrome, isSafari, isFirefox });
                 
                 if (isSafari) {
@@ -495,7 +496,6 @@ $rpName = $amemberConfig['rp_name'];
                         errorMessage += `\n- RP ID: ${options?.rpId || 'unknown'}`;
                         
                         // Safari-specific guidance
-                        const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
                         if (isSafari) {
                             errorMessage += `\n- Browser: Safari (stricter cross-domain requirements)`;
                             errorMessage += `\n\nSafari-specific issues:`;
@@ -525,7 +525,6 @@ $rpName = $amemberConfig['rp_name'];
                         }
                     }
                 } else if (error.name === 'NotAllowedError') {
-                    const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
                     errorMessage += '\n\nThis usually means:';
                     errorMessage += '\n- No passkey credentials are available for this domain';
                     errorMessage += '\n- The user cancelled the authentication';
@@ -594,7 +593,6 @@ $rpName = $amemberConfig['rp_name'];
             });
             
             // Additional Safari-specific setup
-            const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
             if (isSafari) {
                 console.log('Safari WebAuthn client - Enhanced compatibility mode enabled');
                 console.log('- CORS credentials: include');
