@@ -290,6 +290,11 @@ switch ($action) {
                 $options['allowCredentials'] = $allowCredentials;
             }
             
+            // Add debugging info about cross-domain setup
+            $currentOrigin = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'unknown');
+            $rpIdOrigin = 'https://' . $rpId;
+            $isCorsDomain = $currentOrigin !== $rpIdOrigin;
+            
             echo json_encode([
                 'success' => true,
                 'options' => $options,
@@ -304,10 +309,17 @@ switch ($action) {
                     'main_config_exists' => file_exists('../config.php'),
                     'config_source' => 'aMember API or URL fallback',
                     'current_host' => $_SERVER['HTTP_HOST'] ?? 'unknown',
+                    'current_origin' => $currentOrigin,
+                    'rp_id_origin' => $rpIdOrigin,
+                    'is_cross_domain' => $isCorsDomain,
                     'api_call_attempted' => true,
                     'database_search_attempted' => true,
-                    'wellknown_file_check' => 'https://www.kumpeapps.com/.well-known/webauthn should list ' . ($_SERVER['HTTP_HOST'] ?? 'current_domain'),
-                    'cross_domain_setup' => 'RP ID: ' . $rpId . ' vs Origin: ' . ($_SERVER['HTTP_HOST'] ?? 'unknown')
+                    'wellknown_file_check' => 'https://www.kumpeapps.com/.well-known/webauthn should list ' . $currentOrigin,
+                    'cross_domain_setup' => 'RP ID: ' . $rpId . ' vs Origin: ' . $currentOrigin,
+                    'cors_headers_set' => [
+                        'origin' => $_SERVER['HTTP_ORIGIN'] ?? 'none',
+                        'allowed_origins' => 'kumpe3d.com, kumpeapps.com domains'
+                    ]
                 ]
             ]);
             
