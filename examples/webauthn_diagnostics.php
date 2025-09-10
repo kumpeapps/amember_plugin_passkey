@@ -74,6 +74,7 @@
         <button id="checkCurrentDomain" class="btn">Check Current Domain Credentials</button>
         <button id="checkCrossDomain" class="btn">Check Cross-Domain (kumpeapps.com)</button>
         <button id="checkConditional" class="btn">Check Conditional UI</button>
+        <button id="check1Password" class="btn">Check 1Password Interference</button>
         
         <div class="warning">
             <strong>⚠️ Credential Management:</strong>
@@ -196,6 +197,98 @@
             }
         }
         
+        async function check1PasswordInterference() {
+            clearOutput();
+            log('Checking for 1Password credential interference...');
+            
+            const currentDomain = window.location.hostname.replace(/^www\./, '');
+            
+            // Test 1: Check for credentials with allowCredentials (specific IDs)
+            log('Test 1: Checking with specific credential IDs (simulating server response)...');
+            try {
+                const challenge = new Uint8Array(32);
+                crypto.getRandomValues(challenge);
+                
+                const options = {
+                    challenge: challenge,
+                    rpId: currentDomain,
+                    timeout: 5000,
+                    userVerification: 'preferred',
+                    allowCredentials: [
+                        {
+                            type: 'public-key',
+                            id: new Uint8Array([1, 2, 3, 4, 5]), // Fake credential ID
+                            transports: ['internal', 'usb', 'hybrid']
+                        }
+                    ]
+                };
+                
+                const credential = await navigator.credentials.get({
+                    publicKey: options
+                });
+                
+                log('Unexpected success with fake credential ID - this suggests credential conflicts');
+                
+            } catch (error) {
+                log(`Expected result: ${error.name}: ${error.message}`);
+                if (error.name === 'NotAllowedError') {
+                    log('✅ Good: No conflicting credentials found with fake ID');
+                } else if (error.name === 'AbortError') {
+                    log('⚠️ 1Password may be interfering - AbortError suggests authenticator conflicts');
+                }
+            }
+            
+            // Test 2: Check cross-domain with short timeout
+            log('\nTest 2: Cross-domain test with short timeout...');
+            try {
+                const challenge = new Uint8Array(32);
+                crypto.getRandomValues(challenge);
+                
+                const options = {
+                    challenge: challenge,
+                    rpId: 'kumpeapps.com',
+                    timeout: 3000, // Short timeout
+                    userVerification: 'preferred'
+                };
+                
+                const credential = await navigator.credentials.get({
+                    publicKey: options
+                });
+                
+                log('✅ Cross-domain still works!');
+                
+            } catch (error) {
+                log(`❌ Cross-domain failed: ${error.name}: ${error.message}`);
+                if (error.name === 'AbortError') {
+                    log('🔍 AbortError indicates 1Password or authenticator conflict');
+                    log('Recommendation: Check 1Password for saved credentials on this domain');
+                }
+            }
+            
+            // Test 3: Platform authenticator availability
+            log('\nTest 3: Platform authenticator availability...');
+            try {
+                if (window.PublicKeyCredential && 
+                    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+                    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+                    log(`Platform authenticator available: ${available}`);
+                    
+                    if (!available) {
+                        log('⚠️ Platform authenticator not available - may explain AbortError');
+                    }
+                }
+            } catch (error) {
+                log(`Error checking platform authenticator: ${error.message}`);
+            }
+            
+            log('\n📋 1Password Troubleshooting Steps:');
+            log('1. Open 1Password app');
+            log('2. Look for saved "Passkeys" or "WebAuthn" items');
+            log('3. Check if any are associated with this domain');
+            log('4. Try temporarily disabling 1Password extension');
+            log('5. Test WebAuthn without 1Password running');
+        }
+        
         async function clearCredentials() {
             if (!confirm('⚠️ WARNING: This will attempt to clear WebAuthn credentials. Continue?')) {
                 return;
@@ -215,6 +308,7 @@
         document.getElementById('checkCurrentDomain').addEventListener('click', checkCurrentDomainCredentials);
         document.getElementById('checkCrossDomain').addEventListener('click', checkCrossDomainCredentials);
         document.getElementById('checkConditional').addEventListener('click', checkConditionalUI);
+        document.getElementById('check1Password').addEventListener('click', check1PasswordInterference);
         document.getElementById('clearCredentials').addEventListener('click', clearCredentials);
         
         // Initial info
