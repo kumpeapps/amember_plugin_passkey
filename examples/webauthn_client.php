@@ -324,6 +324,57 @@ $rpName = $amemberConfig['rp_name'];
                 // Perform WebAuthn authentication
                 console.log('Calling navigator.credentials.get with options:', options);
                 
+                // Define credential verification function
+                async function handleCredentialVerification(credential) {
+                    // Prepare credential data for server
+                    const credentialData = {
+                        id: credential.id,
+                        rawId: arrayBufferToBase64url(credential.rawId),
+                        type: credential.type,
+                        response: {
+                            clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+                            authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
+                            signature: arrayBufferToBase64url(credential.response.signature),
+                            userHandle: credential.response.userHandle ? 
+                                arrayBufferToBase64url(credential.response.userHandle) : null
+                        }
+                    };
+
+                    // Send to server for verification
+                    const verifyPayload = {
+                        credential: credentialData
+                    };
+                    
+                    // Include fallback information if using fallback mode
+                    if (credential._fallbackMode) {
+                        verifyPayload.fallback_mode = true;
+                        verifyPayload.fallback_rp_id = credential._fallbackRpId;
+                        console.log('Including fallback mode information:', verifyPayload.fallback_rp_id);
+                    }
+                    
+                    const verifyResponse = await fetch('webauthn_simple.php?action=verify', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(verifyPayload)
+                    });
+
+                    if (!verifyResponse.ok) {
+                        throw new Error(`Verification failed: ${verifyResponse.status}`);
+                    }
+
+                    const verifyData = await verifyResponse.json();
+                    console.log('Verification result:', verifyData);
+
+                    if (verifyData.success) {
+                        showStatus('Authentication successful!', 'success');
+                        displayUserInfo(verifyData);
+                    } else {
+                        throw new Error(verifyData.error || 'Verification failed');
+                    }
+                }
+                
                 // Try the cross-domain authentication first
                 try {
                     const credential = await navigator.credentials.get({
@@ -374,56 +425,6 @@ $rpName = $amemberConfig['rp_name'];
                     } else {
                         throw crossDomainError;
                     }
-                }
-                
-                async function handleCredentialVerification(credential) {
-
-                // Prepare credential data for server
-                const credentialData = {
-                    id: credential.id,
-                    rawId: arrayBufferToBase64url(credential.rawId),
-                    type: credential.type,
-                    response: {
-                        clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
-                        authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
-                        signature: arrayBufferToBase64url(credential.response.signature),
-                        userHandle: credential.response.userHandle ? 
-                            arrayBufferToBase64url(credential.response.userHandle) : null
-                    }
-                };
-
-                // Send to server for verification
-                const verifyPayload = {
-                    credential: credentialData
-                };
-                
-                // Include fallback information if using fallback mode
-                if (credential._fallbackMode) {
-                    verifyPayload.fallback_mode = true;
-                    verifyPayload.fallback_rp_id = credential._fallbackRpId;
-                    console.log('Including fallback mode information:', verifyPayload.fallback_rp_id);
-                }
-                
-                const verifyResponse = await fetch('webauthn_simple.php?action=verify', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(verifyPayload)
-                });
-
-                if (!verifyResponse.ok) {
-                    throw new Error(`Verification failed: ${verifyResponse.status}`);
-                }
-
-                const verifyData = await verifyResponse.json();
-                console.log('Verification result:', verifyData);
-
-                if (verifyData.success) {
-                    showStatus('Authentication successful!', 'success');
-                    displayUserInfo(verifyData);
-                } else {
-                    throw new Error(verifyData.error || 'Verification failed');
                 }
 
             } catch (error) {
