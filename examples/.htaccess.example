@@ -1,9 +1,0 @@
-# Add this to your .htaccess file to protect the config.php file
-
-<Files "config.php">
-    Order Allow,Deny
-    Deny from all
-</Files>
-
-# Alternative: Place config.php outside the web root directory
-# and update the path in api_proxy.php accordingly

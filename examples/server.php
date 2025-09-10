@@ -1,0 +1,390 @@
+<?php
+/**
+ * Simple WebAuthn Server
+ * Step 1: Basic same-domain authentication
+ * Auto-installs Composer dependencies if needed
+ */
+
+// Auto-install Composer and dependencies
+function autoInstallComposer() {
+    $composerFile = __DIR__ . '/composer.json';
+    $vendorDir = __DIR__ . '/vendor';
+    $composerPhar = __DIR__ . '/composer.phar';
+    
+    // If we have a composer.json but no vendor directory, install dependencies
+    if (file_exists($composerFile) && !is_dir($vendorDir)) {
+        
+        // Check if Composer is installed globally
+        $composerCmd = 'composer';
+        exec('which composer 2>/dev/null', $output, $returnCode);
+        
+        if ($returnCode !== 0) {
+            // Install Composer locally if not found globally
+            if (!file_exists($composerPhar)) {
+                echo "Installing Composer...\n";
+                
+                // Download Composer installer
+                $installer = file_get_contents('https://getcomposer.org/installer');
+                if ($installer === false) {
+                    die("Failed to download Composer installer\n");
+                }
+                
+                // Run installer
+                $tempFile = tempnam(sys_get_temp_dir(), 'composer_installer');
+                file_put_contents($tempFile, $installer);
+                
+                $output = shell_exec("php $tempFile --install-dir=" . __DIR__);
+                unlink($tempFile);
+                
+                if (!file_exists($composerPhar)) {
+                    die("Failed to install Composer\n");
+                }
+                
+                echo "Composer installed successfully\n";
+            }
+            
+            $composerCmd = "php $composerPhar";
+        }
+        
+        // Install dependencies
+        echo "Installing dependencies...\n";
+        $currentDir = getcwd();
+        chdir(__DIR__);
+        
+        $output = shell_exec("$composerCmd install --no-dev --optimize-autoloader 2>&1");
+        echo $output;
+        
+        chdir($currentDir);
+        
+        if (!is_dir($vendorDir)) {
+            die("Failed to install Composer dependencies\n");
+        }
+        
+        echo "Dependencies installed successfully\n";
+    }
+    
+    // Include autoloader if it exists
+    if (file_exists($vendorDir . '/autoload.php')) {
+        require_once $vendorDir . '/autoload.php';
+    }
+}
+
+// Auto-create config.php if it doesn't exist
+function autoCreateConfig() {
+    $configFile = __DIR__ . '/config.php';
+    $exampleFile = __DIR__ . '/config.example.php';
+    
+    if (!file_exists($configFile) && file_exists($exampleFile)) {
+        copy($exampleFile, $configFile);
+        echo "Created config.php from example. Please update with your database settings.\n";
+    }
+}
+
+// Run auto-setup
+autoInstallComposer();
+autoCreateConfig();
+
+session_start();
+
+// Load configuration
+$config = require_once 'config.php';
+
+// Set JSON response header
+header('Content-Type: application/json');
+
+// Database connection
+function getDB() {
+    global $config;
+    try {
+        $pdo = new PDO(
+            "mysql:host={$config['host']};dbname={$config['database']}",
+            $config['username'],
+            $config['password'],
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
+        return $pdo;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'Database connection failed']);
+        exit;
+    }
+}
+
+// Utility functions
+function base64url_encode($data) {
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+function base64url_decode($data) {
+    return base64_decode(strtr($data, '-_', '+/') . str_repeat('=', 3 - (3 + strlen($data)) % 4));
+}
+
+// Generate secure random bytes
+function generateChallenge($length = 32) {
+    return random_bytes($length);
+}
+
+// Handle different actions
+$action = $_GET['action'] ?? $_POST['action'] ?? '';
+
+switch ($action) {
+    case 'register_begin':
+        handleRegisterBegin();
+        break;
+    case 'register_complete':
+        handleRegisterComplete();
+        break;
+    case 'login_begin':
+        handleLoginBegin();
+        break;
+    case 'login_complete':
+        handleLoginComplete();
+        break;
+    case 'get_user':
+        handleGetUser();
+        break;
+    default:
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Invalid action']);
+}
+
+function handleRegisterBegin() {
+    global $config;
+    
+    $input = json_decode(file_get_contents('php://input'), true);
+    $email = $input['email'] ?? '';
+    $displayName = $input['displayName'] ?? '';
+    
+    if (!$email || !$displayName) {
+        echo json_encode(['success' => false, 'error' => 'Email and display name required']);
+        return;
+    }
+    
+    // Check if user already exists
+    $db = getDB();
+    $stmt = $db->prepare('SELECT id FROM users WHERE email = ?');
+    $stmt->execute([$email]);
+    $user = $stmt->fetch();
+    
+    if ($user) {
+        echo json_encode(['success' => false, 'error' => 'User already exists']);
+        return;
+    }
+    
+    // Generate challenge
+    $challenge = generateChallenge();
+    $_SESSION['registration_challenge'] = base64url_encode($challenge);
+    $_SESSION['registration_email'] = $email;
+    $_SESSION['registration_display_name'] = $displayName;
+    
+    // Generate user ID
+    $userId = random_bytes(32);
+    $_SESSION['registration_user_id'] = base64url_encode($userId);
+    
+    $options = [
+        'challenge' => $_SESSION['registration_challenge'],
+        'rp' => [
+            'name' => $config['rp_name'],
+            'id' => $config['rp_id']
+        ],
+        'user' => [
+            'id' => $_SESSION['registration_user_id'],
+            'name' => $email,
+            'displayName' => $displayName
+        ],
+        'pubKeyCredParams' => [
+            ['type' => 'public-key', 'alg' => -7], // ES256
+            ['type' => 'public-key', 'alg' => -257] // RS256
+        ],
+        'timeout' => $config['timeout'],
+        'attestation' => 'none',
+        'authenticatorSelection' => [
+            'userVerification' => $config['user_verification']
+        ]
+    ];
+    
+    echo json_encode(['success' => true, 'options' => $options]);
+}
+
+function handleRegisterComplete() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (!isset($_SESSION['registration_challenge'])) {
+        echo json_encode(['success' => false, 'error' => 'No registration in progress']);
+        return;
+    }
+    
+    $credential = $input['credential'] ?? null;
+    if (!$credential) {
+        echo json_encode(['success' => false, 'error' => 'No credential provided']);
+        return;
+    }
+    
+    // Basic validation (in production, you'd do proper attestation verification)
+    $clientDataJSON = base64url_decode($credential['response']['clientDataJSON']);
+    $clientData = json_decode($clientDataJSON, true);
+    
+    // Verify challenge
+    if ($clientData['challenge'] !== $_SESSION['registration_challenge']) {
+        echo json_encode(['success' => false, 'error' => 'Challenge mismatch']);
+        return;
+    }
+    
+    // Verify origin
+    $expectedOrigin = 'https://' . $_SERVER['HTTP_HOST'];
+    if ($_SERVER['HTTP_HOST'] === 'localhost' || strpos($_SERVER['HTTP_HOST'], 'localhost:') === 0) {
+        $expectedOrigin = 'http://' . $_SERVER['HTTP_HOST'];
+    }
+    
+    if ($clientData['origin'] !== $expectedOrigin) {
+        echo json_encode(['success' => false, 'error' => 'Origin mismatch']);
+        return;
+    }
+    
+    // Extract public key (simplified - in production use proper CBOR parsing)
+    $attestationObject = base64url_decode($credential['response']['attestationObject']);
+    
+    // For now, just store the credential ID and a placeholder public key
+    $credentialId = $credential['id'];
+    $publicKey = base64_encode($attestationObject); // Simplified storage
+    
+    // Save user and credential
+    $db = getDB();
+    $db->beginTransaction();
+    
+    try {
+        // Insert user
+        $stmt = $db->prepare('INSERT INTO users (email, display_name) VALUES (?, ?)');
+        $stmt->execute([$_SESSION['registration_email'], $_SESSION['registration_display_name']]);
+        $userId = $db->lastInsertId();
+        
+        // Insert credential
+        $stmt = $db->prepare('INSERT INTO passkey_credentials (user_id, credential_id, public_key) VALUES (?, ?, ?)');
+        $stmt->execute([$userId, $credentialId, $publicKey]);
+        
+        $db->commit();
+        
+        // Clean up session
+        unset($_SESSION['registration_challenge']);
+        unset($_SESSION['registration_email']);
+        unset($_SESSION['registration_display_name']);
+        unset($_SESSION['registration_user_id']);
+        
+        // Set logged in session
+        $_SESSION['user_id'] = $userId;
+        $_SESSION['user_email'] = $_SESSION['registration_email'];
+        
+        echo json_encode(['success' => true, 'message' => 'Registration successful']);
+        
+    } catch (Exception $e) {
+        $db->rollback();
+        echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+    }
+}
+
+function handleLoginBegin() {
+    global $config;
+    
+    // Generate challenge
+    $challenge = generateChallenge();
+    $_SESSION['login_challenge'] = base64url_encode($challenge);
+    
+    $options = [
+        'challenge' => $_SESSION['login_challenge'],
+        'rpId' => $config['rp_id'],
+        'timeout' => $config['timeout'],
+        'userVerification' => $config['user_verification']
+    ];
+    
+    echo json_encode(['success' => true, 'options' => $options]);
+}
+
+function handleLoginComplete() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (!isset($_SESSION['login_challenge'])) {
+        echo json_encode(['success' => false, 'error' => 'No login in progress']);
+        return;
+    }
+    
+    $credential = $input['credential'] ?? null;
+    if (!$credential) {
+        echo json_encode(['success' => false, 'error' => 'No credential provided']);
+        return;
+    }
+    
+    // Look up credential
+    $db = getDB();
+    $stmt = $db->prepare('
+        SELECT c.user_id, c.public_key, c.sign_count, u.email, u.display_name 
+        FROM passkey_credentials c 
+        JOIN users u ON c.user_id = u.id 
+        WHERE c.credential_id = ?
+    ');
+    $stmt->execute([$credential['id']]);
+    $credentialRecord = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$credentialRecord) {
+        echo json_encode(['success' => false, 'error' => 'Credential not found']);
+        return;
+    }
+    
+    // Basic validation (in production, you'd do proper signature verification)
+    $clientDataJSON = base64url_decode($credential['response']['clientDataJSON']);
+    $clientData = json_decode($clientDataJSON, true);
+    
+    // Verify challenge
+    if ($clientData['challenge'] !== $_SESSION['login_challenge']) {
+        echo json_encode(['success' => false, 'error' => 'Challenge mismatch']);
+        return;
+    }
+    
+    // Verify origin
+    $expectedOrigin = 'https://' . $_SERVER['HTTP_HOST'];
+    if ($_SERVER['HTTP_HOST'] === 'localhost' || strpos($_SERVER['HTTP_HOST'], 'localhost:') === 0) {
+        $expectedOrigin = 'http://' . $_SERVER['HTTP_HOST'];
+    }
+    
+    if ($clientData['origin'] !== $expectedOrigin) {
+        echo json_encode(['success' => false, 'error' => 'Origin mismatch']);
+        return;
+    }
+    
+    // Update sign count (simplified)
+    $stmt = $db->prepare('UPDATE passkey_credentials SET last_used = NOW() WHERE credential_id = ?');
+    $stmt->execute([$credential['id']]);
+    
+    // Set session
+    $_SESSION['user_id'] = $credentialRecord['user_id'];
+    $_SESSION['user_email'] = $credentialRecord['email'];
+    
+    // Clean up
+    unset($_SESSION['login_challenge']);
+    
+    echo json_encode([
+        'success' => true, 
+        'user' => [
+            'id' => $credentialRecord['user_id'],
+            'email' => $credentialRecord['email'],
+            'displayName' => $credentialRecord['display_name']
+        ]
+    ]);
+}
+
+function handleGetUser() {
+    if (isset($_SESSION['user_id'])) {
+        $db = getDB();
+        $stmt = $db->prepare('SELECT id, email, display_name FROM users WHERE id = ?');
+        $stmt->execute([$_SESSION['user_id']]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($user) {
+            echo json_encode(['success' => true, 'user' => $user]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'User not found']);
+        }
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Not logged in']);
+    }
+}
+?>
