@@ -4,6 +4,52 @@
  * Uses basic cryptographic functions without complex dependencies
  */
 
+// Add comprehensive CORS headers for cross-domain WebAuthn
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+// Allow specific origins for WebAuthn
+$allowedOrigins = [
+    'https://www.kumpe3d.com',
+    'https://kumpe3d.com',
+    'https://www.kumpeapps.com',
+    'https://kumpeapps.com'
+];
+
+if (in_array($origin, $allowedOrigins)) {
+    header("Access-Control-Allow-Origin: $origin");
+} else {
+    // For development, allow localhost
+    if (strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false) {
+        header("Access-Control-Allow-Origin: $origin");
+    }
+}
+
+header('Access-Control-Allow-Credentials: true');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Max-Age: 3600');
+
+// Handle preflight requests
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+// Set content type for JSON responses
+header('Content-Type: application/json');
+
+// Start session with secure settings for cross-domain
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'domain' => '',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'None'  // Required for cross-domain cookies
+]);
+
+session_start();
+
 // Load config - REQUIRED
 if (!file_exists('config.php')) {
     header('HTTP/1.1 500 Internal Server Error');
@@ -293,13 +339,17 @@ switch ($action) {
             $credentialData = $input['credential'] ?? null;
             $fallbackMode = $input['fallback_mode'] ?? false;
             $fallbackRpId = $input['fallback_rp_id'] ?? null;
+            $currentDomainMode = $input['current_domain_mode'] ?? false;
+            $domainRpId = $input['domain_rp_id'] ?? null;
             
             if (!$credentialData) {
                 throw new Exception('No credential data provided');
             }
             
             error_log("WebAuthn Simple: Verify request - Fallback mode: " . ($fallbackMode ? 'true' : 'false') . 
-                      ($fallbackRpId ? ", Fallback RP ID: $fallbackRpId" : ""));
+                      ($fallbackRpId ? ", Fallback RP ID: $fallbackRpId" : "") .
+                      ", Current domain mode: " . ($currentDomainMode ? 'true' : 'false') .
+                      ($domainRpId ? ", Domain RP ID: $domainRpId" : ""));
             
             // Check if we have a stored challenge
             if (!isset($_SESSION['webauthn_challenge'])) {
@@ -327,8 +377,11 @@ switch ($action) {
                 throw new Exception('Challenge mismatch');
             }
             
-            // Get RP ID - use fallback if in fallback mode
-            if ($fallbackMode && $fallbackRpId) {
+            // Get RP ID - use current domain mode, fallback, or standard
+            if ($currentDomainMode && $domainRpId) {
+                $verificationRpId = $domainRpId;
+                error_log("WebAuthn Simple: Using current domain mode RP ID: $verificationRpId");
+            } elseif ($fallbackMode && $fallbackRpId) {
                 $verificationRpId = $fallbackRpId;
                 error_log("WebAuthn Simple: Using fallback RP ID for verification: $verificationRpId");
             } else {

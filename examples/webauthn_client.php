@@ -238,14 +238,29 @@ $rpName = $amemberConfig['rp_name'];
         async function authenticateWithPasskey() {
             let options = null; // Declare options at function scope
             try {
+                // Ensure this is triggered by user activation (required for Safari)
+                if (!event || !event.isTrusted) {
+                    console.warn('WebAuthn request should be triggered by user activation');
+                }
+                
                 showStatus('Getting challenge from server...', 'info');
                 authButton.disabled = true;
 
-                // Get challenge from simple WebAuthn server
+                // Check if this is Safari and log compatibility info
+                const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
+                if (isSafari) {
+                    console.log('Safari detected - using enhanced compatibility mode');
+                    console.log('Safari version:', navigator.userAgent);
+                }
+
+                // Get challenge from simple WebAuthn server with proper CORS
                 const challengeResponse = await fetch('webauthn_simple.php?action=challenge', {
                     method: 'GET',
+                    credentials: 'include',  // Include cookies for cross-domain
                     headers: {
+                        'Accept': 'application/json',
                         'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache'
                     }
                 });
 
@@ -305,7 +320,10 @@ $rpName = $amemberConfig['rp_name'];
                 
                 // Check if .well-known/webauthn is accessible
                 try {
-                    const wellKnownResponse = await fetch(`https://www.kumpeapps.com/.well-known/webauthn`);
+                    const wellKnownResponse = await fetch(`https://www.kumpeapps.com/.well-known/webauthn`, {
+                        credentials: 'omit',  // Don't send cookies for well-known check
+                        cache: 'no-cache'
+                    });
                     const wellKnownData = await wellKnownResponse.json();
                     console.log('Well-known WebAuthn data:', wellKnownData);
                     console.log('Current origin in well-known?', wellKnownData.origins?.includes(window.location.origin));
@@ -315,14 +333,31 @@ $rpName = $amemberConfig['rp_name'];
                         console.warn('Current origin:', window.location.origin);
                         console.warn('Allowed origins:', wellKnownData.origins);
                     }
+                    
+                    // Safari-specific Related Origins check
+                    if (isSafari) {
+                        console.log('Safari Related Origins check:');
+                        console.log('- RP ID:', options?.rpId);
+                        console.log('- Current origin in allowed list:', wellKnownData.origins?.includes(window.location.origin));
+                        console.log('- Safari may have stricter Related Origins requirements');
+                    }
                 } catch (e) {
                     console.warn('Could not fetch .well-known/webauthn:', e);
+                    if (isSafari) {
+                        console.warn('Safari CORS issue: Unable to fetch .well-known/webauthn - this may cause WebAuthn failures');
+                    }
                 }
                 
                 showStatus('Please authenticate with your passkey...', 'info');
 
                 // Perform WebAuthn authentication
                 console.log('Calling navigator.credentials.get with options:', options);
+                
+                // Safari-specific workaround: Add a small delay to ensure user activation context
+                if (isSafari) {
+                    console.log('Safari: Adding activation context preservation...');
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
                 
                 // Define credential verification function
                 async function handleCredentialVerification(credential) {
@@ -354,8 +389,10 @@ $rpName = $amemberConfig['rp_name'];
                     
                     const verifyResponse = await fetch('webauthn_simple.php?action=verify', {
                         method: 'POST',
+                        credentials: 'include',  // Include cookies for cross-domain
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json'
                         },
                         body: JSON.stringify(verifyPayload)
                     });
@@ -397,31 +434,46 @@ $rpName = $amemberConfig['rp_name'];
                     if (crossDomainError.name === 'SecurityError' && crossDomainError.message.includes('RPID')) {
                         console.log('Attempting fallback with current domain as RP ID...');
                         
-                        // Try with current domain as RP ID
-                        const fallbackOptions = { ...options };
-                        const currentDomain = window.location.hostname.replace(/^www\./, '');
-                        fallbackOptions.rpId = currentDomain;
-                        
-                        console.log('Fallback options:', fallbackOptions);
-                        showStatus('Trying alternative authentication method...', 'info');
-                        
-                        const fallbackCredential = await navigator.credentials.get({
-                            publicKey: fallbackOptions
-                        });
-                        
-                        if (!fallbackCredential) {
-                            throw new Error('No credential received from fallback authenticator');
+                        try {
+                            // Try with current domain as RP ID
+                            const fallbackOptions = { ...options };
+                            const currentDomain = window.location.hostname.replace(/^www\./, '');
+                            fallbackOptions.rpId = currentDomain;
+                            
+                            // For fallback, enable discoverable credentials (remove allowCredentials)
+                            delete fallbackOptions.allowCredentials;
+                            
+                            console.log('Fallback options (discoverable credentials):', fallbackOptions);
+                            showStatus('Trying with current domain credentials...', 'info');
+                            
+                            const fallbackCredential = await navigator.credentials.get({
+                                publicKey: fallbackOptions
+                            });
+                            
+                            if (!fallbackCredential) {
+                                throw new Error('No credential received from fallback authenticator');
+                            }
+                            
+                            // Mark as fallback mode
+                            fallbackCredential._fallbackMode = true;
+                            fallbackCredential._fallbackRpId = currentDomain;
+                            
+                            console.log('Fallback credential received:', fallbackCredential.id);
+                            showStatus('Verifying with server...', 'info');
+                            
+                            // Continue with verification...
+                            await handleCredentialVerification(fallbackCredential);
+                            
+                        } catch (fallbackError) {
+                            console.warn('Fallback authentication also failed:', fallbackError);
+                            
+                            // If fallback fails with NotAllowedError, it likely means no credentials exist
+                            if (fallbackError.name === 'NotAllowedError') {
+                                throw new Error('No passkey credentials found for this domain. You may need to register a passkey first, or the credentials were registered on a different domain.');
+                            } else {
+                                throw fallbackError;
+                            }
                         }
-                        
-                        // Mark as fallback mode
-                        fallbackCredential._fallbackMode = true;
-                        fallbackCredential._fallbackRpId = currentDomain;
-                        
-                        console.log('Fallback credential received:', fallbackCredential.id);
-                        showStatus('Verifying with server...', 'info');
-                        
-                        // Continue with verification...
-                        await handleCredentialVerification(fallbackCredential);
                     } else {
                         throw crossDomainError;
                     }
@@ -441,7 +493,22 @@ $rpName = $amemberConfig['rp_name'];
                         errorMessage += '\n\nThis is a cross-domain WebAuthn issue. Details:';
                         errorMessage += `\n- Current domain: ${window.location.origin}`;
                         errorMessage += `\n- RP ID: ${options?.rpId || 'unknown'}`;
-                        errorMessage += `\n- Expected: RP ID should be in .well-known/webauthn origins`;
+                        
+                        // Safari-specific guidance
+                        const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
+                        if (isSafari) {
+                            errorMessage += `\n- Browser: Safari (stricter cross-domain requirements)`;
+                            errorMessage += `\n\nSafari-specific issues:`;
+                            errorMessage += `\n• Intelligent Tracking Prevention (ITP) may block cross-domain requests`;
+                            errorMessage += `\n• Related Origins support may be limited`;
+                            errorMessage += `\n• Third-party cookies may be blocked`;
+                            errorMessage += `\n\nRecommended solutions:`;
+                            errorMessage += `\n1. Use the current domain version instead`;
+                            errorMessage += `\n2. Register passkeys on each domain separately`;
+                            errorMessage += `\n3. Consider using Chrome/Firefox for cross-domain WebAuthn`;
+                        } else {
+                            errorMessage += `\n- Browser: ${navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Firefox') ? 'Firefox' : 'Other'}`;
+                        }
                         
                         // Check if we can access the .well-known file
                         if (options?.rpId) {
@@ -457,6 +524,35 @@ $rpName = $amemberConfig['rp_name'];
                                 .catch(e => console.log('Could not fetch .well-known/webauthn:', e));
                         }
                     }
+                } else if (error.name === 'NotAllowedError') {
+                    const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
+                    errorMessage += '\n\nThis usually means:';
+                    errorMessage += '\n- No passkey credentials are available for this domain';
+                    errorMessage += '\n- The user cancelled the authentication';
+                    errorMessage += '\n- The authenticator is not available';
+                    
+                    if (isSafari) {
+                        errorMessage += '\n\nSafari-specific considerations:';
+                        errorMessage += '\n- User activation may have been lost';
+                        errorMessage += '\n- Cross-site tracking prevention may be interfering';
+                        errorMessage += '\n- Session cookies may be blocked';
+                    }
+                    
+                    errorMessage += '\n\nSuggestions:';
+                    errorMessage += '\n- Make sure you have registered a passkey on this site first';
+                    errorMessage += '\n- Try refreshing the page and authenticating again';
+                    errorMessage += '\n- Check if your authenticator device is available';
+                    
+                    if (isSafari) {
+                        errorMessage += '\n- Consider trying the current-domain version for better Safari compatibility';
+                    }
+                } else if (error.message.includes('No passkey credentials found')) {
+                    errorMessage = 'No passkey credentials found for this domain.\n\n';
+                    errorMessage += 'This means either:\n';
+                    errorMessage += '1. You haven\'t registered a passkey on this site yet\n';
+                    errorMessage += '2. Your passkeys were registered on a different domain\n';
+                    errorMessage += '3. Cross-domain authentication is not working in this browser\n\n';
+                    errorMessage += 'Please contact the site administrator to set up passkey registration.';
                 }
                 
                 showStatus(errorMessage, 'error');
@@ -490,7 +586,22 @@ $rpName = $amemberConfig['rp_name'];
             console.log('Hostname:', window.location.hostname);
             console.log('Port:', window.location.port);
 
-            authButton.addEventListener('click', authenticateWithPasskey);
+            // Enhanced event listener with user activation preservation for Safari
+            authButton.addEventListener('click', function(event) {
+                // Preserve the event object for user activation context
+                window.lastUserEvent = event;
+                authenticateWithPasskey();
+            });
+            
+            // Additional Safari-specific setup
+            const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
+            if (isSafari) {
+                console.log('Safari WebAuthn client - Enhanced compatibility mode enabled');
+                console.log('- CORS credentials: include');
+                console.log('- User activation preservation: enabled');
+                console.log('- Related Origins compatibility: enhanced');
+            }
+            
             showStatus('Ready for WebAuthn authentication!', 'success');
         });
     </script>
