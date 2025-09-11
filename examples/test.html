@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal WebAuthn Test</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>Minimal WebAuthn Test</h1>
+    
+    <div id="status">Ready</div>
+    
+    <h2>Register</h2>
+    <input type="email" id="email" placeholder="Email" value="test@example.com">
+    <input type="text" id="name" placeholder="Name" value="Test User">
+    <button onclick="register()">Register</button>
+    
+    <h2>Login</h2>
+    <button onclick="login()">Login</button>
+    
+    <div id="output" style="margin-top: 20px; padding: 10px; background: #f0f0f0; white-space: pre-wrap;"></div>
+
+    <script>
+        function log(msg) {
+            document.getElementById('output').textContent += new Date().toISOString() + ': ' + msg + '\n';
+            console.log(msg);
+        }
+        
+        function setStatus(msg) {
+            document.getElementById('status').textContent = msg;
+            log('Status: ' + msg);
+        }
+        
+        // Simple base64url functions - Fixed version
+        function b64decode(str) {
+            try {
+                // Add padding if needed
+                const padding = '='.repeat((4 - str.length % 4) % 4);
+                const base64 = str.replace(/-/g, '+').replace(/_/g, '/') + padding;
+                return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+            } catch (error) {
+                log('b64decode error: ' + error.message + ' for input: ' + str);
+                throw error;
+            }
+        }
+        
+        function b64encode(buf) {
+            try {
+                // Convert ArrayBuffer to Uint8Array if needed
+                const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
+                
+                // Convert to binary string
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                
+                // Encode to base64 and convert to base64url
+                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            } catch (error) {
+                log('b64encode error: ' + error.message);
+                throw error;
+            }
+        }
+        
+        async function register() {
+            try {
+                setStatus('Starting registration...');
+                
+                const email = document.getElementById('email').value;
+                const name = document.getElementById('name').value;
+                
+                log('Email: ' + email + ', Name: ' + name);
+                
+                // Get challenge
+                const resp1 = await fetch('server.php?action=register_begin', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email: email, displayName: name})
+                });
+                
+                const data1 = await resp1.json();
+                log('Challenge response: ' + JSON.stringify(data1));
+                
+                if (!data1.success) {
+                    throw new Error(data1.error);
+                }
+                
+                // Prepare WebAuthn options
+                const options = data1.options;
+                options.challenge = b64decode(options.challenge).buffer;
+                options.user.id = b64decode(options.user.id).buffer;
+                
+                log('Calling navigator.credentials.create...');
+                setStatus('Use your authenticator...');
+                
+                const cred = await navigator.credentials.create({publicKey: options});
+                log('Credential created: ' + cred.id);
+                log('Credential type: ' + cred.type);
+                log('Response keys: ' + Object.keys(cred.response));
+                
+                // Test encoding each piece separately
+                log('Testing clientDataJSON encoding...');
+                const clientDataB64 = b64encode(cred.response.clientDataJSON);
+                log('clientDataJSON encoded length: ' + clientDataB64.length);
+                
+                log('Testing attestationObject encoding...');
+                const attestationB64 = b64encode(cred.response.attestationObject);
+                log('attestationObject encoded length: ' + attestationB64.length);
+                
+                // Send to server
+                const credData = {
+                    id: cred.id,
+                    type: cred.type,
+                    response: {
+                        clientDataJSON: clientDataB64,
+                        attestationObject: attestationB64
+                    }
+                };
+                
+                log('Credential data prepared: ' + JSON.stringify(credData, null, 2));
+                
+                const resp2 = await fetch('server.php?action=register_complete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({credential: credData})
+                });
+                
+                const data2 = await resp2.json();
+                log('Verification response: ' + JSON.stringify(data2));
+                
+                if (data2.success) {
+                    setStatus('Registration successful!');
+                } else {
+                    throw new Error(data2.error);
+                }
+                
+            } catch (error) {
+                log('ERROR: ' + error.name + ': ' + error.message);
+                setStatus('Registration failed: ' + error.message);
+            }
+        }
+        
+        async function login() {
+            try {
+                setStatus('Starting login...');
+                
+                // Get challenge
+                const resp1 = await fetch('server.php?action=login_begin', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                
+                const data1 = await resp1.json();
+                log('Login challenge: ' + JSON.stringify(data1));
+                
+                if (!data1.success) {
+                    throw new Error(data1.error);
+                }
+                
+                // Prepare options
+                const options = data1.options;
+                options.challenge = b64decode(options.challenge).buffer;
+                
+                log('Calling navigator.credentials.get...');
+                setStatus('Use your authenticator...');
+                
+                const cred = await navigator.credentials.get({publicKey: options});
+                log('Credential retrieved: ' + cred.id);
+                
+                // Send to server
+                const credData = {
+                    id: cred.id,
+                    type: cred.type,
+                    response: {
+                        clientDataJSON: b64encode(cred.response.clientDataJSON),
+                        authenticatorData: b64encode(cred.response.authenticatorData),
+                        signature: b64encode(cred.response.signature),
+                        userHandle: cred.response.userHandle ? b64encode(cred.response.userHandle) : null
+                    }
+                };
+                
+                const resp2 = await fetch('server.php?action=login_complete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({credential: credData})
+                });
+                
+                const data2 = await resp2.json();
+                log('Login response: ' + JSON.stringify(data2));
+                
+                if (data2.success) {
+                    setStatus('Login successful!');
+                } else {
+                    throw new Error(data2.error);
+                }
+                
+            } catch (error) {
+                log('ERROR: ' + error.name + ': ' + error.message);
+                setStatus('Login failed: ' + error.message);
+            }
+        }
+        
+        log('Minimal WebAuthn test loaded');
+        log('WebAuthn supported: ' + !!window.PublicKeyCredential);
+    </script>
+</body>
+</html>

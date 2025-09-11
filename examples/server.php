@@ -84,10 +84,43 @@ function autoCreateConfig() {
 autoInstallComposer();
 autoCreateConfig();
 
+// Configure session settings based on environment
+if ($_SERVER['HTTP_HOST'] === 'localhost:8081' || $_SERVER['HTTP_HOST'] === 'localhost') {
+    // For localhost, use default session settings that work with HTTP
+    ini_set('session.cookie_secure', '0');
+    ini_set('session.cookie_samesite', 'Lax');
+}
+
 session_start();
 
 // Load configuration
 $config = require_once 'config.php';
+
+// Validate configuration
+function validateConfig($config) {
+    $required = ['host', 'database', 'username', 'password'];
+    $missing = [];
+    
+    foreach ($required as $key) {
+        if (!isset($config[$key]) || empty($config[$key]) || $config[$key] === 'your_password_here') {
+            $missing[] = $key;
+        }
+    }
+    
+    if (!empty($missing)) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false, 
+            'error' => 'Configuration incomplete. Please update config.php with your database settings.',
+            'missing_fields' => $missing,
+            'setup_required' => true
+        ]);
+        exit;
+    }
+}
+
+// Check configuration before proceeding
+validateConfig($config);
 
 // Set JSON response header
 header('Content-Type: application/json');
@@ -96,16 +129,38 @@ header('Content-Type: application/json');
 function getDB() {
     global $config;
     try {
+        $dsn = "mysql:host={$config['host']};dbname={$config['database']};charset=utf8mb4";
         $pdo = new PDO(
-            "mysql:host={$config['host']};dbname={$config['database']}",
+            $dsn,
             $config['username'],
             $config['password'],
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false
+            ]
         );
         return $pdo;
     } catch (PDOException $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'error' => 'Database connection failed']);
+        
+        // Provide more specific error messages
+        $errorMsg = 'Database connection failed';
+        
+        if (strpos($e->getMessage(), 'Unknown database') !== false) {
+            $errorMsg = "Database '{$config['database']}' does not exist. Please create it first.";
+        } elseif (strpos($e->getMessage(), 'Access denied') !== false) {
+            $errorMsg = "Database access denied. Check username/password in config.php";
+        } elseif (strpos($e->getMessage(), "Can't connect") !== false) {
+            $errorMsg = "Cannot connect to database server '{$config['host']}'. Is it running?";
+        }
+        
+        echo json_encode([
+            'success' => false, 
+            'error' => $errorMsg,
+            'details' => $e->getMessage(),
+            'setup_required' => true
+        ]);
         exit;
     }
 }
@@ -116,7 +171,14 @@ function base64url_encode($data) {
 }
 
 function base64url_decode($data) {
-    return base64_decode(strtr($data, '-_', '+/') . str_repeat('=', 3 - (3 + strlen($data)) % 4));
+    // Add proper padding
+    $padding = 4 - (strlen($data) % 4);
+    if ($padding !== 4) {
+        $data .= str_repeat('=', $padding);
+    }
+    
+    // Convert base64url to base64 and decode
+    return base64_decode(strtr($data, '-_', '+/'));
 }
 
 // Generate secure random bytes
@@ -181,6 +243,10 @@ function handleRegisterBegin() {
     $userId = random_bytes(32);
     $_SESSION['registration_user_id'] = base64url_encode($userId);
     
+    // Debug session data
+    error_log('Session data in register_begin: ' . print_r($_SESSION, true));
+    error_log('Session ID: ' . session_id());
+    
     $options = [
         'challenge' => $_SESSION['registration_challenge'],
         'rp' => [
@@ -209,8 +275,11 @@ function handleRegisterBegin() {
 function handleRegisterComplete() {
     $input = json_decode(file_get_contents('php://input'), true);
     
+    // Debug session data
+    error_log('Session data in register_complete: ' . print_r($_SESSION, true));
+    
     if (!isset($_SESSION['registration_challenge'])) {
-        echo json_encode(['success' => false, 'error' => 'No registration in progress']);
+        echo json_encode(['success' => false, 'error' => 'No registration in progress', 'session_id' => session_id()]);
         return;
     }
     
@@ -221,8 +290,27 @@ function handleRegisterComplete() {
     }
     
     // Basic validation (in production, you'd do proper attestation verification)
-    $clientDataJSON = base64url_decode($credential['response']['clientDataJSON']);
-    $clientData = json_decode($clientDataJSON, true);
+    try {
+        $clientDataJSON = base64url_decode($credential['response']['clientDataJSON']);
+        if ($clientDataJSON === false) {
+            throw new Exception('Failed to decode clientDataJSON');
+        }
+        
+        $clientData = json_decode($clientDataJSON, true);
+        if ($clientData === null) {
+            throw new Exception('Failed to parse clientDataJSON as JSON');
+        }
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false, 
+            'error' => 'Invalid clientDataJSON: ' . $e->getMessage(),
+            'debug' => [
+                'input_length' => strlen($credential['response']['clientDataJSON']),
+                'input_sample' => substr($credential['response']['clientDataJSON'], 0, 50)
+            ]
+        ]);
+        return;
+    }
     
     // Verify challenge
     if ($clientData['challenge'] !== $_SESSION['registration_challenge']) {
