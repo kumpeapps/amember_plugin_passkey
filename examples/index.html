@@ -91,9 +91,6 @@
             color: #0c5460;
             border: 1px solid #bee5eb;
         }
-        #userProfile {
-            display: none;
-        }
         .profile-info {
             background: #f8f9fa;
             padding: 20px;
@@ -353,6 +350,16 @@
                 const options = data.options;
                 options.challenge = base64urlToArrayBuffer(options.challenge);
                 
+                // Decode allowCredentials if present
+                if (options.allowCredentials && Array.isArray(options.allowCredentials)) {
+                    options.allowCredentials.forEach(cred => {
+                        if (cred.id) {
+                            cred.id = base64urlToArrayBuffer(cred.id);
+                        }
+                    });
+                    console.log('Found ' + options.allowCredentials.length + ' allowed credentials');
+                }
+                
                 showMessage('Please use your authenticator to login...', 'info');
                 
                 // Get credential
@@ -415,11 +422,14 @@
         // Check login status
         async function checkLoginStatus() {
             try {
+                console.log('Checking login status...');
                 const response = await fetch('server.php?action=get_user');
                 const data = await response.json();
+                console.log('Login status response:', data);
                 
                 if (data.success && data.user) {
                     // User is logged in
+                    console.log('User is logged in:', data.user);
                     document.getElementById('authForms').classList.add('hidden');
                     document.getElementById('userProfile').classList.remove('hidden');
                     
@@ -428,18 +438,25 @@
                     document.getElementById('userDisplayName').textContent = data.user.display_name;
                 } else {
                     // User is not logged in
+                    console.log('User is not logged in');
                     document.getElementById('authForms').classList.remove('hidden');
                     document.getElementById('userProfile').classList.add('hidden');
                 }
             } catch (error) {
                 console.error('Error checking login status:', error);
-                // Show login forms by default
+                // Show login forms by default on error
+                console.log('Showing login forms due to error');
                 document.getElementById('authForms').classList.remove('hidden');
                 document.getElementById('userProfile').classList.add('hidden');
             }
         }
         
         // Check login status on page load
+        console.log('Page loaded, checking login status...');
+        // Ensure forms are visible initially
+        document.getElementById('authForms').classList.remove('hidden');
+        document.getElementById('userProfile').classList.add('hidden');
+        
         checkLoginStatus();
     </script>
 </body>

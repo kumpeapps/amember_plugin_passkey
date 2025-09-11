@@ -161,6 +161,16 @@
                 const options = data1.options;
                 options.challenge = b64decode(options.challenge).buffer;
                 
+                // Decode allowCredentials if present
+                if (options.allowCredentials && Array.isArray(options.allowCredentials)) {
+                    options.allowCredentials.forEach(cred => {
+                        if (cred.id) {
+                            cred.id = b64decode(cred.id).buffer;
+                        }
+                    });
+                    log('Found ' + options.allowCredentials.length + ' allowed credentials');
+                }
+                
                 log('Calling navigator.credentials.get...');
                 setStatus('Use your authenticator...');
                 

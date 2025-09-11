@@ -205,6 +205,9 @@ switch ($action) {
     case 'get_user':
         handleGetUser();
         break;
+    case 'logout':
+        handleLogout();
+        break;
     default:
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => 'Invalid action']);
@@ -273,100 +276,120 @@ function handleRegisterBegin() {
 }
 
 function handleRegisterComplete() {
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    // Debug session data
-    error_log('Session data in register_complete: ' . print_r($_SESSION, true));
-    
-    if (!isset($_SESSION['registration_challenge'])) {
-        echo json_encode(['success' => false, 'error' => 'No registration in progress', 'session_id' => session_id()]);
-        return;
-    }
-    
-    $credential = $input['credential'] ?? null;
-    if (!$credential) {
-        echo json_encode(['success' => false, 'error' => 'No credential provided']);
-        return;
-    }
-    
-    // Basic validation (in production, you'd do proper attestation verification)
     try {
-        $clientDataJSON = base64url_decode($credential['response']['clientDataJSON']);
-        if ($clientDataJSON === false) {
-            throw new Exception('Failed to decode clientDataJSON');
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        // Debug session data
+        error_log('Session data in register_complete: ' . print_r($_SESSION, true));
+        
+        if (!isset($_SESSION['registration_challenge'])) {
+            echo json_encode(['success' => false, 'error' => 'No registration in progress', 'session_id' => session_id()]);
+            return;
         }
         
-        $clientData = json_decode($clientDataJSON, true);
-        if ($clientData === null) {
-            throw new Exception('Failed to parse clientDataJSON as JSON');
+        $credential = $input['credential'] ?? null;
+        if (!$credential) {
+            echo json_encode(['success' => false, 'error' => 'No credential provided']);
+            return;
         }
+        
+        // Basic validation (in production, you'd do proper attestation verification)
+        try {
+            $clientDataJSON = base64url_decode($credential['response']['clientDataJSON']);
+            if ($clientDataJSON === false) {
+                throw new Exception('Failed to decode clientDataJSON');
+            }
+            
+            $clientData = json_decode($clientDataJSON, true);
+            if ($clientData === null) {
+                throw new Exception('Failed to parse clientDataJSON as JSON');
+            }
+        } catch (Exception $e) {
+            echo json_encode([
+                'success' => false, 
+                'error' => 'Invalid clientDataJSON: ' . $e->getMessage(),
+                'debug' => [
+                    'input_length' => strlen($credential['response']['clientDataJSON']),
+                    'input_sample' => substr($credential['response']['clientDataJSON'], 0, 50)
+                ]
+            ]);
+            return;
+        }
+        
+        // Verify challenge
+        if ($clientData['challenge'] !== $_SESSION['registration_challenge']) {
+            echo json_encode(['success' => false, 'error' => 'Challenge mismatch']);
+            return;
+        }
+        
+        // Verify origin
+        $expectedOrigin = 'https://' . $_SERVER['HTTP_HOST'];
+        if ($_SERVER['HTTP_HOST'] === 'localhost:8081' || strpos($_SERVER['HTTP_HOST'], 'localhost:') === 0) {
+            $expectedOrigin = 'http://' . $_SERVER['HTTP_HOST'];
+        }
+        
+        if ($clientData['origin'] !== $expectedOrigin) {
+            echo json_encode(['success' => false, 'error' => 'Origin mismatch']);
+            return;
+        }
+        
+        // Extract public key (simplified - in production use proper CBOR parsing)
+        try {
+            $attestationObject = base64url_decode($credential['response']['attestationObject']);
+            if ($attestationObject === false) {
+                throw new Exception('Failed to decode attestationObject');
+            }
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'error' => 'Invalid attestationObject: ' . $e->getMessage()]);
+            return;
+        }
+        
+        // For now, just store the credential ID and a placeholder public key
+        $credentialId = $credential['id'];
+        $publicKey = base64_encode($attestationObject); // Simplified storage
+        
+        // Save user and credential
+        $db = getDB();
+        $db->beginTransaction();
+        
+        try {
+            // Insert user
+            error_log('Inserting user: ' . $_SESSION['registration_email'] . ' / ' . $_SESSION['registration_display_name']);
+            $stmt = $db->prepare('INSERT INTO users (email, display_name) VALUES (?, ?)');
+            $stmt->execute([$_SESSION['registration_email'], $_SESSION['registration_display_name']]);
+            $userId = $db->lastInsertId();
+            error_log('User inserted with ID: ' . $userId);
+            
+            // Insert credential
+            error_log('Inserting credential for user ID: ' . $userId);
+            $stmt = $db->prepare('INSERT INTO passkey_credentials (user_id, credential_id, public_key) VALUES (?, ?, ?)');
+            $stmt->execute([$userId, $credentialId, $publicKey]);
+            error_log('Credential inserted successfully');
+            
+            $db->commit();
+            error_log('Database transaction committed');
+            
+            // Set logged in session before cleaning up
+            $_SESSION['user_id'] = $userId;
+            $_SESSION['user_email'] = $_SESSION['registration_email'];
+            
+            // Clean up session
+            unset($_SESSION['registration_challenge']);
+            unset($_SESSION['registration_email']);
+            unset($_SESSION['registration_display_name']);
+            unset($_SESSION['registration_user_id']);
+            
+            echo json_encode(['success' => true, 'message' => 'Registration successful']);
+            
+        } catch (Exception $e) {
+            $db->rollback();
+            error_log('Database error in registration: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        }
+        
     } catch (Exception $e) {
-        echo json_encode([
-            'success' => false, 
-            'error' => 'Invalid clientDataJSON: ' . $e->getMessage(),
-            'debug' => [
-                'input_length' => strlen($credential['response']['clientDataJSON']),
-                'input_sample' => substr($credential['response']['clientDataJSON'], 0, 50)
-            ]
-        ]);
-        return;
-    }
-    
-    // Verify challenge
-    if ($clientData['challenge'] !== $_SESSION['registration_challenge']) {
-        echo json_encode(['success' => false, 'error' => 'Challenge mismatch']);
-        return;
-    }
-    
-    // Verify origin
-    $expectedOrigin = 'https://' . $_SERVER['HTTP_HOST'];
-    if ($_SERVER['HTTP_HOST'] === 'localhost' || strpos($_SERVER['HTTP_HOST'], 'localhost:') === 0) {
-        $expectedOrigin = 'http://' . $_SERVER['HTTP_HOST'];
-    }
-    
-    if ($clientData['origin'] !== $expectedOrigin) {
-        echo json_encode(['success' => false, 'error' => 'Origin mismatch']);
-        return;
-    }
-    
-    // Extract public key (simplified - in production use proper CBOR parsing)
-    $attestationObject = base64url_decode($credential['response']['attestationObject']);
-    
-    // For now, just store the credential ID and a placeholder public key
-    $credentialId = $credential['id'];
-    $publicKey = base64_encode($attestationObject); // Simplified storage
-    
-    // Save user and credential
-    $db = getDB();
-    $db->beginTransaction();
-    
-    try {
-        // Insert user
-        $stmt = $db->prepare('INSERT INTO users (email, display_name) VALUES (?, ?)');
-        $stmt->execute([$_SESSION['registration_email'], $_SESSION['registration_display_name']]);
-        $userId = $db->lastInsertId();
-        
-        // Insert credential
-        $stmt = $db->prepare('INSERT INTO passkey_credentials (user_id, credential_id, public_key) VALUES (?, ?, ?)');
-        $stmt->execute([$userId, $credentialId, $publicKey]);
-        
-        $db->commit();
-        
-        // Clean up session
-        unset($_SESSION['registration_challenge']);
-        unset($_SESSION['registration_email']);
-        unset($_SESSION['registration_display_name']);
-        unset($_SESSION['registration_user_id']);
-        
-        // Set logged in session
-        $_SESSION['user_id'] = $userId;
-        $_SESSION['user_email'] = $_SESSION['registration_email'];
-        
-        echo json_encode(['success' => true, 'message' => 'Registration successful']);
-        
-    } catch (Exception $e) {
-        $db->rollback();
-        echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        error_log('General error in handleRegisterComplete: ' . $e->getMessage());
+        echo json_encode(['success' => false, 'error' => 'Server error: ' . $e->getMessage()]);
     }
 }
 
@@ -377,12 +400,32 @@ function handleLoginBegin() {
     $challenge = generateChallenge();
     $_SESSION['login_challenge'] = base64url_encode($challenge);
     
+    // Get all available credentials for this site
+    $db = getDB();
+    $stmt = $db->prepare('SELECT credential_id FROM passkey_credentials');
+    $stmt->execute();
+    $credentials = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    
+    // Format credentials for WebAuthn
+    $allowCredentials = [];
+    foreach ($credentials as $credentialId) {
+        $allowCredentials[] = [
+            'type' => 'public-key',
+            'id' => $credentialId,
+            'transports' => ['internal', 'hybrid', 'usb', 'nfc', 'ble'] // Support all transport methods
+        ];
+    }
+    
     $options = [
         'challenge' => $_SESSION['login_challenge'],
         'rpId' => $config['rp_id'],
         'timeout' => $config['timeout'],
-        'userVerification' => $config['user_verification']
+        'userVerification' => $config['user_verification'],
+        'allowCredentials' => $allowCredentials
     ];
+    
+    error_log('Login options: ' . json_encode($options));
+    error_log('Found ' . count($allowCredentials) . ' credentials for login');
     
     echo json_encode(['success' => true, 'options' => $options]);
 }
@@ -474,5 +517,13 @@ function handleGetUser() {
     } else {
         echo json_encode(['success' => false, 'error' => 'Not logged in']);
     }
+}
+
+function handleLogout() {
+    // Clear the session
+    session_destroy();
+    
+    // Send success response
+    echo json_encode(['success' => true, 'message' => 'Logged out successfully']);
 }
 ?>
